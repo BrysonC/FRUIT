@@ -2,6 +2,9 @@ import json         # response handling
 import requests     # API data request
 import base64       # API hashing
 import datetime     # str conversion
+import moviepy      #For video handling
+import datetime         # for handling time math
+import os               # for cleaning up temp files
 
 translateSymbol = {'Q': 'Quals', 'P': 'Playoffs', 'F': 'Finals'}
 
@@ -164,3 +167,64 @@ def livestreamDescription(matches: list, originMin: int, originSec: int,  origin
     # share the results
     print(desc)
     return desc
+def clip_match_with_intro(
+    livestream_file: str,
+    intro_file: str,
+    match_start: datetime.datetime,
+    match_end: datetime.datetime,
+    origin_time: datetime.datetime,
+    output_filename: str
+):
+    """Clips a match from livestream and prepends team intro video"""
+    start_offset = (match_start - origin_time).total_seconds()
+    duration = (match_end - match_start).total_seconds()
+    match_clip = "temp_match_clip.mp4"
+    concat_list = "concat_list.txt"
+
+    print(f"Extracting match from {start_offset}s to {start_offset + duration}s")
+    subprocess.run([
+        "moviepy", "-y",
+        "-ss", str(start_offset),
+        "-i", livestream_file,
+        "-t", str(duration),
+        "-c", "copy",
+        match_clip
+    ], check=True)
+
+    print(" Creating file list for concat")
+    with open(concat_list, "w") as f:
+        f.write(f"file '{intro_file}'\n")
+        f.write(f"file '{match_clip}'\n")
+
+    print(f" Generating final match video: {output_filename}")
+    subprocess.run([
+        "moviepy", "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", concat_list,
+        "-c", "copy",
+        output_filename
+    ], check=True)
+
+    os.remove(match_clip)
+    os.remove(concat_list)
+    print(f" Finished match video saved as: {output_filename}")
+
+def process_all_matches(matches, origin_time, livestream_file, intro_file, output_dir="output_clips"):
+    """Loops through all matches and creates clipped videos with intro"""
+    os.makedirs(output_dir, exist_ok=True)
+    for match in matches:
+        match_id = match['id']
+        match_start = match['start']
+        match_end = match['post']
+        output_filename = os.path.join(output_dir, f"{match_id}_with_intro.mp4")
+
+        print(f"\n Processing match {match_id}")
+        clip_match_with_intro(
+            livestream_file,
+            intro_file,
+            match_start,
+            match_end,
+            origin_time,
+            output_filename
+        )

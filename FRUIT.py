@@ -28,6 +28,7 @@ from TOOLS.process_queue import process_queue_build_live
 from TOOLS.process_queue import process_queue_build_static
 from TOOLS.process_queue import process_queue_send
 
+
 # create directories/files if missing
 os.makedirs('log/', exist_ok=True)
 open('log/seek.txt', 'a+').close()
@@ -120,7 +121,7 @@ class MainWindow(QWidget):
         self.video_description = QPlainTextEdit("Footage of this event is courtesy of FIRST Indiana Robotics.\n\nFollow us on Twitter (@FIRSTINRobotics), Facebook (FIRST Indiana Robotics), and Twitch (FIRSTINRobotics).\n\nFor more information and future event schedules, visit our website: https://www.firstindianarobotics.org")
         layout.addRow('Description:', self.video_description)
         # Tags
-        self.video_tags = QLineEdit('FIRST Indiana Robotics, FIN')
+        self.video_tags = QLineEdit('FIRST Indiana Robotics, FIN') # change tags to be based on state
         layout.addRow(QLabel('Tags (comma-delimited) :'), self.video_tags)
         layout.addRow(QLabel('<i>program will automatically add year, event code, and program (FRC/FTC)</i>'))
         
