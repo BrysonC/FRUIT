@@ -19,6 +19,7 @@ from TOOLS.YouTube import authenticate_youtube
 from TOOLS.thumbnails import generateThumbnail
 from TOOLS.TBA import postTheBlueAlliance
 from TOOLS.Twitch import covertID2Username
+from TOOLS.YoutubeLivestream import getChannelIDFromHandle
 
 # processes to run on queued threads
 import threading
@@ -27,6 +28,8 @@ from TOOLS.process_queue import process_queue_seek
 from TOOLS.process_queue import process_queue_build_live
 from TOOLS.process_queue import process_queue_build_static
 from TOOLS.process_queue import process_queue_send
+from TOOLS.ffmpegrecord import start_recording
+from TOOLS.ffmpegrecord import stop_recording
 
 # create directories/files if missing
 os.makedirs('log/', exist_ok=True)
@@ -194,13 +197,28 @@ class MainWindow(QWidget):
         layout.addRow(self.twitch_button)
         self.twitchDelay = QLineEdit('2.5'); layout.addRow('Stream Delay [sec]:', self.twitchDelay)
         layout.addRow(QLabel('⸻ or ⸻'))
-        self.youtubeUser = QLineEdit('kyfirstrobotics'); layout.addRow('Youtube User:', self.youtubeUser)
-        self.youtube_button = QPushButton("Test Youtube Connection")
+        self.youtubeUser = QLineEdit('kentuckyfirstrobotics'); layout.addRow('Youtube Username:', self.youtubeUser)
+        self.youtube_button = QPushButton("Get Channel ID")
         layout.addRow(self.youtube_button)
-        self.youtube_button.setStyleSheet('color: red')
-        self.youtubeDelay = QLineEdit('2.5'); layout.addRow('Stream Delay [sec]:', self.youtubeDelay)
-        layout.addRow(QLabel('⸻ or ⸻'))
-        self.mp4_VOD = QPushButton('Select File')
+        self.youtube_button.setStyleSheet("color: red")
+        self.youtube_button.clicked.connect(self.get_yt_channel_ID)
+
+        self.record_button = QPushButton(
+            "Start Recording YouTube Livestream! (Polls every ten seconds to see if channel is live)"
+        )
+        layout.addRow(self.record_button)
+        self.record_button.setStyleSheet("color: red")
+        self.record_button.clicked.connect(start_recording)
+        self.record_button.clicked.connect(self.recording_button)
+
+        self.stop_button = QPushButton("Stop Recording YouTube Livestream.")
+        layout.addRow(self.stop_button)
+        self.stop_button.setStyleSheet("color: red")
+        self.stop_button.clicked.connect(stop_recording)
+
+        layout.addRow(QLabel("⸻ or ⸻"))
+
+        self.mp4_VOD = QPushButton("Select File")
         self.mp4_VOD.clicked.connect(self.getFileVideo)
         layout.addRow('Video File:', self.mp4_VOD)
         # reference match details
@@ -418,7 +436,33 @@ class MainWindow(QWidget):
             self.twitch_button.setText("Twitch user not found!")
             self.twitch_button.setStyleSheet("color: red;")
             self.tab.tabBar().setTabTextColor(5, QColor('red'))
-    
+
+    def get_yt_channel_ID(self):
+
+        self.youtube_button.setText("Looking for Youtube user...")
+        self.youtube_button.setStyleSheet("color: aqua;")
+        self.youtube_button.repaint()
+
+        with open("CREDENTIALS", "r") as file:
+            CREDENTIALS = json.load(file)  # contains API credentials
+
+        try:
+            self.youtubeUserID = getChannelIDFromHandle(self.youtubeUser.text())
+            self.youtube_button.setText("User found! ID:" + self.youtubeUserID)
+            self.youtube_button.setStyleSheet("color: green;")
+            self.tab.tabBar().setTabTextColor(5, QColor("green"))
+        except IndexError:
+            self.youtube_button.setText("Youtube user not found!")
+            self.youtube_button.setStyleSheet("color: red;")
+            self.tab.tabBar().setTabTextColor(5, QColor("red"))
+
+    def recording_button(self):
+        self.record_button.setText(
+            "Looking for/recording livestream... check TOOLS..recordings for video file! "
+        )
+        self.record_button.setStyleSheet("color: aqua;")
+        self.youtube_button.repaint()
+
     def handleTBA(self, TBA_Auth_Id, TBA_Auth_Secret, TBA_eventKey):
         self.button_TBA.setText('Testing TBA API...')
         self.button_TBA.setStyleSheet('color: aqua')
