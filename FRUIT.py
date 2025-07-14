@@ -270,13 +270,6 @@ class MainWindow(QWidget):
         layout.addRow("Stream Delay [sec]:", self.twitchDelay)
         layout.addRow(QLabel("⸻ or ⸻"))
 
-        self.youtubeUser = QLineEdit("kentuckyfirstrobotics")
-        layout.addRow("Youtube Username:", self.youtubeUser)
-        self.youtube_button = QPushButton("Get Channel ID")
-        layout.addRow(self.youtube_button)
-        self.youtube_button.setStyleSheet("color: red")
-        self.youtube_button.clicked.connect(self.get_yt_channel_ID)
-
         self.record_button = QPushButton(
             "Start Recording YouTube Livestream! (Polls every ten seconds to see if channel is live)"
         )
@@ -399,60 +392,78 @@ class MainWindow(QWidget):
         self.show()
 
     def start_sauce_thread(self):
-        # disable the button to prevent double-click
-        self.startThreadButton.setEnabled(False)
+        try:
+            original_text = self.startThreadButton.text()
+            original_style = self.startThreadButton.styleSheet()
 
-        # clear the stop event
-        self.stop_event.clear()
+            self.startThreadButton.setText("Making Sauce")
+            self.startThreadButton.setStyleSheet("color: green")
 
-        # Clear and entries in send log file that were not finished
-        with open("log/send.txt", "r") as source_file, open(
-            "log/seek.txt", "w"
-        ) as destination_file:
-            # Read the contents of the source file and write them to the destination file
-            destination_file.write(source_file.read())
-
-        with open("log/send.txt", "r") as file:
-            # Count finished matches
-            count_finished = len(
-                [line for line in file if self.CONFIG["event"]["code"] in line]
+            QTimer.singleShot(
+                2000,
+                lambda: (
+                    self.startThreadButton.setStyleSheet(original_style),
+                    self.startThreadButton.setText(original_text),
+                ),
             )
 
-        self.status_seen.setText(f" SEEN: {count_finished}")
-        self.status_built.setText(f"BUILT: {count_finished}")
-        self.status_sent.setText(f" SENT: {count_finished}")
+            # clear the stop event
+            self.stop_event.clear()
 
-        # load API credentials
-        with open("CREDENTIALS", "r") as file:
-            CREDENTIALS = json.load(file)
+            # Clear and entries in send log file that were not finished
+            with open("log/send.txt", "r") as source_file, open(
+                "log/seek.txt", "w"
+            ) as destination_file:
+                # Read the contents of the source file and write them to the destination file
+                destination_file.write(source_file.read())
 
-        # Create threads for each queue
-        self.thread_seek = threading.Thread(
-            target=process_queue_seek,
-            args=(self.CONFIG, self.stop_event, self.status_seen, CREDENTIALS),
-        )
-        if self.CONFIG["video"]["type"] == "live":
-            self.thread_build = threading.Thread(
-                target=process_queue_build_live,
-                args=(self.CONFIG, self.stop_event, self.status_built),
+            with open("log/send.txt", "r") as file:
+                # Count finished matches
+                count_finished = len(
+                    [line for line in file if self.CONFIG["event"]["code"] in line]
+                )
+
+            self.status_seen.setText(f" SEEN: {count_finished}")
+            self.status_built.setText(f"BUILT: {count_finished}")
+            self.status_sent.setText(f" SENT: {count_finished}")
+
+            # load API credentials
+            with open("CREDENTIALS", "r") as file:
+                CREDENTIALS = json.load(file)
+    
+            # Create threads for each queue
+            self.thread_seek = threading.Thread(
+                target=process_queue_seek,
+                args=(self.CONFIG, self.stop_event, self.status_seen, CREDENTIALS),
             )
-        elif self.CONFIG["video"]["type"] == "static":
-            self.thread_build = threading.Thread(
-                target=process_queue_build_static,
-                args=(self.CONFIG, self.stop_event, self.status_built, self.matches),
+            if self.CONFIG["video"]["type"] == "live":
+                self.thread_build = threading.Thread(
+                    target=process_queue_build_live,
+                    args=(self.CONFIG, self.stop_event, self.status_built),
+                )
+            elif self.CONFIG["video"]["type"] == "static":
+                self.thread_build = threading.Thread(
+                    target=process_queue_build_static,
+                    args=(self.CONFIG, self.stop_event, self.status_built, self.matches),
+                )
+            self.thread_send = threading.Thread(
+                target=process_queue_send,
+                args=(self.CONFIG, self.stop_event, self.status_sent, self.YouTube),
             )
-        self.thread_send = threading.Thread(
-            target=process_queue_send,
-            args=(self.CONFIG, self.stop_event, self.status_sent, self.YouTube),
-        )
 
-        # Start the threads
-        if self.CONFIG["video"]["type"] == "live":
-            watch(self.CONFIG["video"]["twitchUserID"], self.stop_event, CREDENTIALS)
-        self.thread_seek.start()
-        self.thread_build.start()
-        self.thread_send.start()
+            # Start the threads
+            if self.CONFIG["video"]["type"] == "live":
+                watch(self.CONFIG["video"]["twitchUserID"], self.stop_event, CREDENTIALS)
+            self.thread_seek.start()
+            self.thread_build.start()
+            self.thread_send.start()
 
+        except AttributeError:
+
+            self.startThreadButton.setText("Make The Sauce: ERROR")
+            self.startThreadButton.setStyleSheet("color: red")
+
+        
     def on_sauce_made(self, result):
         self.startThreadButton.setText(f"{result} matches processed!")
         self.startThreadButton.setEnabled(True)
@@ -465,10 +476,15 @@ class MainWindow(QWidget):
         self.media_player.setPosition(position)
         self.media_player.play()
 
+        original_style = self.play_button.styleSheet()
+
         # Pause the video after 4 seconds
         QTimer.singleShot(4000, self.media_player.pause)
         self.tab.tabBar().setTabTextColor(5, QColor("green"))
         self.play_button.setStyleSheet("color: green")
+        QTimer.singleShot(
+            4000, lambda: (self.play_button.setStyleSheet(original_style),)
+        )
 
     def getFileVideo(self, button):
         response = QFileDialog.getOpenFileName(
@@ -568,24 +584,6 @@ class MainWindow(QWidget):
             self.twitch_button.setStyleSheet("color: red;")
             self.tab.tabBar().setTabTextColor(5, QColor("red"))
 
-    def get_yt_channel_ID(self):
-
-        self.youtube_button.setText("Looking for Youtube user...")
-        self.youtube_button.setStyleSheet("color: aqua;")
-        self.youtube_button.repaint()
-
-        with open("CREDENTIALS", "r") as file:
-            CREDENTIALS = json.load(file)  # contains API credentials
-
-        try:
-            self.youtubeUserID = getChannelIDFromHandle(self.youtubeUser.text())
-            self.youtube_button.setText("User found! ID:" + self.youtubeUserID)
-            self.youtube_button.setStyleSheet("color: green;")
-            self.tab.tabBar().setTabTextColor(5, QColor("green"))
-        except IndexError:
-            self.youtube_button.setText("Youtube user not found!")
-            self.youtube_button.setStyleSheet("color: red;")
-            self.tab.tabBar().setTabTextColor(5, QColor("red"))
 
     def recording_button(self):
         self.record_button.setText(
@@ -667,6 +665,21 @@ class MainWindow(QWidget):
 
     def bakeCONFIG(self, button):
         try:
+
+            original_text = button.text()
+            original_style = button.styleSheet()
+
+            button.setStyleSheet("color: green")
+            button.setText("Bake CONFIG: SUCCESS!")
+
+            QTimer.singleShot(
+                2000,
+                lambda: (
+                    button.setStyleSheet(original_style),
+                    button.setText(original_text),
+                ),
+            )
+            
             CONFIG = {
                 "program": self.program.currentText(),
                 "event": {
@@ -725,12 +738,18 @@ class MainWindow(QWidget):
 
             with open("CONFIG", "w") as file:
                 json.dump(CONFIG, file, indent=2)
-            button.setStyleSheet("color: green")
-            button.setText("Bake CONFIG: SUCCESS!")
 
+            
+        
         except AttributeError:
             button.setStyleSheet("color: red")
             button.setText("Bake CONFIG: ERROR")
+            
+        
+            
+           
+
+        
 
     def loadCONFIG(self, button):
         response = QFileDialog.getOpenFileName(
