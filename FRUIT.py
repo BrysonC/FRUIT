@@ -90,6 +90,7 @@ class MainWindow(QWidget):
                 "<h1>FIRST Robotics Uploader from an Indiana Teammate</h1>\n<i>Make each tab green then you're ready to proceed.</i>"
             )
         )
+
         layout.addRow(QLabel(bodyText))
         # select program (FRC/FTC)
         self.program = QComboBox()
@@ -99,6 +100,18 @@ class MainWindow(QWidget):
         self.credentialsButton = QPushButton("Set/Check Credentials", self)
         self.credentialsButton.clicked.connect(lambda: CredDialog(self).exec())
         layout.addRow(self.credentialsButton)
+
+        self.youtubeUser = QLineEdit("kentuckyfirstrobotics")
+        layout.addRow("Youtube Username:", self.youtubeUser)
+        self.youtube_button = QPushButton("Get YouTube Channel ID")
+        layout.addRow(self.youtube_button)
+        self.youtube_button.setStyleSheet("color: red")
+        self.youtube_button.clicked.connect(self.get_yt_channel_ID)
+        self.channelID = QLineEdit("")
+        layout.addRow("Copy + Paste:", self.channelID)
+
+
+        
 
         """
         EVENT PAGE
@@ -583,6 +596,23 @@ class MainWindow(QWidget):
             self.twitch_button.setText("Twitch user not found!")
             self.twitch_button.setStyleSheet("color: red;")
             self.tab.tabBar().setTabTextColor(5, QColor("red"))
+
+    def get_yt_channel_ID(self):
+        self.youtube_button.setText("Looking for Youtube user...")
+        self.youtube_button.setStyleSheet("color: aqua;")
+        self.youtube_button.repaint()
+        with open("CREDENTIALS", "r") as file:
+            CREDENTIALS = json.load(file)  # contains API credentials
+        try:
+            self.youtubeUserID = getChannelIDFromHandle(self.youtubeUser.text())
+            self.youtube_button.setText("User ID Found!")
+            self.youtube_button.setStyleSheet("color: green")
+            self.channelID.setText(self.youtubeUserID)
+            self.channelID.setStyleSheet("color: green;")
+            self.tab.tabBar().setTabTextColor(5, QColor("green"))
+        except IndexError:
+            self.youtube_button.setText("YouTube user not found!")
+            self.youtube_button.setStyleSheet("color: red")
 
 
     def recording_button(self):
