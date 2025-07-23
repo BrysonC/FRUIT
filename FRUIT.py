@@ -498,7 +498,7 @@ class MainWindow(QWidget):
         original_style = self.play_button.styleSheet()
         original_text = self.play_button.text()
 
-        # Pause the video after 4 , change color and text of button
+        # Pause the video after 4 seconds, change color and text of button
         QTimer.singleShot(4000, self.media_player.pause)
         self.tab.tabBar().setTabTextColor(5, QColor("green"))
         self.play_button.setStyleSheet("color: green")
