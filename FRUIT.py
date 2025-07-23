@@ -81,13 +81,16 @@ class MainWindow(QWidget):
         self.credentialsButton.clicked.connect(lambda: CredDialog(self).exec())
         layout.addRow(self.credentialsButton)
 
+        # input YouTube channel if recording a YouTube livestream
         self.youtubeUser = QLineEdit("kentuckyfirstrobotics")
         layout.addRow("Youtube Username:", self.youtubeUser)
+        # gets channel ID from username
         self.youtube_button = QPushButton("Get YouTube Channel ID")
         layout.addRow(self.youtube_button)
         self.youtube_button.setStyleSheet("color: red")
         self.youtube_button.clicked.connect(self.get_yt_channel_ID)
         self.channelID = QLineEdit("")
+        # copy + pastable, ready to put in credentials
         layout.addRow("Copy + Paste:", self.channelID)
 
 
@@ -221,8 +224,6 @@ class MainWindow(QWidget):
         self.stop_button.setStyleSheet("color: red")
         self.stop_button.clicked.connect(stop_recording)
 
-        layout.addRow(QLabel("⸻ or ⸻"))
-
         self.mp4_VOD = QPushButton("Select File")
         self.mp4_VOD.clicked.connect(self.getFileVideo)
         layout.addRow('Video File:', self.mp4_VOD)
@@ -318,12 +319,13 @@ class MainWindow(QWidget):
     
     def start_sauce_thread(self):
         try:
+            # sets original text and style so button can be reverted
             original_text = self.startThreadButton.text()
             original_style = self.startThreadButton.styleSheet()
 
             self.startThreadButton.setText("Making Sauce")
             self.startThreadButton.setStyleSheet("color: green")
-
+            # sets button back to default after 2 seconds so user knows they can click it again
             QTimer.singleShot(
                 2000,
                 lambda: (
@@ -355,7 +357,7 @@ class MainWindow(QWidget):
             # load API credentials
             with open("CREDENTIALS", "r") as file:
                 CREDENTIALS = json.load(file)
-    
+
             # Create threads for each queue
             self.thread_seek = threading.Thread(
                 target=process_queue_seek,
@@ -369,7 +371,12 @@ class MainWindow(QWidget):
             elif self.CONFIG["video"]["type"] == "static":
                 self.thread_build = threading.Thread(
                     target=process_queue_build_static,
-                    args=(self.CONFIG, self.stop_event, self.status_built, self.matches),
+                    args=(
+                        self.CONFIG,
+                        self.stop_event,
+                        self.status_built,
+                        self.matches,
+                    ),
                 )
             self.thread_send = threading.Thread(
                 target=process_queue_send,
@@ -378,7 +385,9 @@ class MainWindow(QWidget):
 
             # Start the threads
             if self.CONFIG["video"]["type"] == "live":
-                watch(self.CONFIG["video"]["twitchUserID"], self.stop_event, CREDENTIALS)
+                watch(
+                    self.CONFIG["video"]["twitchUserID"], self.stop_event, CREDENTIALS
+                )
             self.thread_seek.start()
             self.thread_build.start()
             self.thread_send.start()
@@ -388,7 +397,6 @@ class MainWindow(QWidget):
             self.startThreadButton.setText("Make The Sauce: ERROR")
             self.startThreadButton.setStyleSheet("color: red")
 
-        
     def on_sauce_made(self, result):
         self.startThreadButton.setText(f"{result} matches processed!")
         self.startThreadButton.setEnabled(True)
@@ -401,14 +409,23 @@ class MainWindow(QWidget):
         self.media_player.setPosition(position)
         self.media_player.play()
 
+        # sets original text and color as default value
         original_style = self.play_button.styleSheet()
+        original_text = self.play_button.text()
 
-        # Pause the video after 4 seconds
+        # Pause the video after 4 seconds, change color and text of button
         QTimer.singleShot(4000, self.media_player.pause)
         self.tab.tabBar().setTabTextColor(5, QColor("green"))
         self.play_button.setStyleSheet("color: green")
+        self.play_button.setText("Playing Video")
+
+        # sets color and text back to default so users know it can be pushed again
         QTimer.singleShot(
-            4000, lambda: (self.play_button.setStyleSheet(original_style),)
+            4000,
+            lambda: (
+                self.play_button.setStyleSheet(original_style),
+                self.play_button.setText(original_text),
+            ),
         )
 
     def getFileVideo(self, button):
@@ -498,7 +515,6 @@ class MainWindow(QWidget):
             self.youtube_button.setText("YouTube user not found!")
             self.youtube_button.setStyleSheet("color: red")
 
-
     def recording_button(self):
         self.record_button.setText(
             "Looking for/recording livestream... check TOOLS..recordings for video file! "
@@ -568,6 +584,7 @@ class MainWindow(QWidget):
             button.setStyleSheet("color: green")
             button.setText("Bake CONFIG: SUCCESS!")
 
+            # Sets text and color back to default so users know config can be baked again without restarting program
             QTimer.singleShot(
                 2000,
                 lambda: (
@@ -575,7 +592,7 @@ class MainWindow(QWidget):
                     button.setText(original_text),
                 ),
             )
-            
+
             CONFIG = {
                 'program' : self.program.currentText(),
                 'event' : {
