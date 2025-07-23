@@ -2,6 +2,7 @@ import requests
 import re
 import json
 
+
 def getChannelIDFromHandle(input_str: str) -> str:
     """
     Gets the YouTube channel ID from a handle by parsing the page's HTML.
@@ -13,13 +14,13 @@ def getChannelIDFromHandle(input_str: str) -> str:
         str: YouTube channel ID
     """
     # Normalize input to handle
-    
-    handle = input_str if input_str.startswith("@") else "@" + input_str
+
+    handle = (
+        input_str if input_str.startswith("@") else "@" + input_str
+    )  # Adds @ symbol to inputted username if not present to get full channel ID
 
     url = f"https://www.youtube.com/{handle}"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
+    headers = {"User-Agent": "Mozilla/5.0"}
 
     response = requests.get(url, headers=headers)
     if response.status_code != 200:

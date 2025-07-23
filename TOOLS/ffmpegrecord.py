@@ -10,12 +10,17 @@ with open("CREDENTIALS", "r") as file:
     CREDENTIALS = json.load(file)
 CHANNEL_ID = CREDENTIALS["Youtube_Channel_ID"]
 API_KEY = CREDENTIALS["Youtube_API_Key"]
-CHECK_INTERVAL = 10  # seconds
+CHECK_INTERVAL = (
+    10  # Checks for livestream every 10 seconds to avoid going over API limit
+)
 
 ffmpeg_process = None
 
 
 def get_live_video_url(channel_id, api_key):
+    """
+    Uses user's channel ID and API key to get the url of YouTube channels' livestream
+    """
     url = (
         f"https://www.googleapis.com/youtube/v3/search?"
         f"part=snippet&channelId={channel_id}&eventType=live&type=video&key={api_key}"
@@ -30,7 +35,9 @@ def get_live_video_url(channel_id, api_key):
 
 
 def resolve_stream_url(youtube_url):
-    # This calls yt-dlp to extract the direct stream URL, as opposed to the public livestream URL
+    """
+    This calls yt-dlp to extract the direct stream URL, as opposed to the public livestream URL
+    """
     result = subprocess.run(
         ["yt-dlp", "-g", "-f", "best", youtube_url],
         stdout=subprocess.PIPE,
