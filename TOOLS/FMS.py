@@ -9,7 +9,6 @@ translateSymbol = {'Q': 'Quals', 'P': 'Playoffs', 'F': 'Finals'}
 with open("CREDENTIALS", "r") as file:
     CREDENTIALS = json.load(file)  # contains username + authKey
 
-
 def prepareHeadersFMS(username, authKey):
     """Prepares request header for FMS, allows for authentication
 
@@ -29,8 +28,6 @@ def prepareHeadersFMS(username, authKey):
     return headers
 
 # sometimes milliseconds isn't reported in FMS - use this to fix that
-
-
 def str2dte(timeString):
     """Converts datetime string that may contain decimal seconds
 
@@ -47,7 +44,6 @@ def str2dte(timeString):
         timeObject = datetime.datetime.strptime(timeString, "%Y-%m-%dT%H:%M:%S")
     
     return timeObject
-
 
 def getMatchesFromFMS(year: int, eventCode: str, program: str, authUsr: str = CREDENTIALS['FRC_username'], authKey: str = CREDENTIALS['FRC_key']):
     """Connects to FRC FMS records for an event and stores them
@@ -131,7 +127,6 @@ def rewrapMatches(matchesRaw:list, program:str):
     matchesSorted = sorted(matchesCleaned, key=lambda x: x["start"])
 
     return matchesSorted
-
 
 def livestreamDescription(matches: list, originMin: int, originSec: int,  originMatchID: str = 'Q1'):
     """Generates a string that can be placed in the description of a YouTube livestream recording to provide timestamps for matches
