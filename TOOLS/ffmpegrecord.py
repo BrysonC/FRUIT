@@ -8,7 +8,7 @@ import subprocess
 
 with open("CREDENTIALS", "r") as file:
     CREDENTIALS = json.load(file)
-CHANNEL_ID = CREDENTIALS["Youtube_Channel_ID"]
+
 API_KEY = CREDENTIALS["Youtube_API_Key"]
 CHECK_INTERVAL = (
     10  # Checks for livestream every 10 seconds to avoid going over API limit
@@ -67,11 +67,11 @@ def record_stream(stream_url, output_file):
     )  # Starts global process so stop_recording can terminate recording
 
 
-def start_recording():
+def start_recording(channel_id):
     """
     Runs ffmpeg recording in a thread to prevent GUI from freezing
     """
-    thread = threading.Thread(target=run_recording_process, daemon=True)
+    thread = threading.Thread(target=run_recording_process, daemon=True, args=(channel_id,))
     thread.start()
 
 
@@ -84,10 +84,10 @@ def stop_recording():
         ffmpeg_process = None
 
 
-def main():
+def run_recording_process(channel_id):
     print("[INFO] Checking for stream...")
     while True:
-        live_url = get_live_video_url(CHANNEL_ID, API_KEY)
+        live_url = get_live_video_url(channel_id, API_KEY)
         if live_url:
             print(f"[INFO] Stream live at: {live_url}")
             stream_url = resolve_stream_url(live_url)
@@ -100,8 +100,3 @@ def main():
         else:
             print("[INFO] Stream not live yet. Checking again in 10 seconds...")
             time.sleep(CHECK_INTERVAL)
-
-
-# Wrapper function for GUI use
-def run_recording_process():
-    main()

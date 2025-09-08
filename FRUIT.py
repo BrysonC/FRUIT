@@ -48,6 +48,7 @@ class MainWindow(QWidget):
         self.logoSponsorFilepath = None
         self.videoFilepath = None
         self.twitchUserID = None
+        self.youtubeUserID = None
         self.YouTube = None
         self.stop_event = threading.Event()
 
@@ -80,18 +81,6 @@ class MainWindow(QWidget):
         self.credentialsButton = QPushButton("Set/Check Credentials", self)
         self.credentialsButton.clicked.connect(lambda: CredDialog(self).exec())
         layout.addRow(self.credentialsButton)
-
-        # input YouTube channel if recording a YouTube livestream
-        self.youtubeUser = QLineEdit("kentuckyfirstrobotics")
-        layout.addRow("Youtube Username:", self.youtubeUser)
-        # gets channel ID from username
-        self.youtube_button = QPushButton("Get YouTube Channel ID")
-        layout.addRow(self.youtube_button)
-        self.youtube_button.setStyleSheet("color: red")
-        self.youtube_button.clicked.connect(self.get_yt_channel_ID)
-        self.channelID = QLineEdit("")
-        # copy + pastable, ready to put in credentials
-        layout.addRow("Copy + Paste:", self.channelID)
 
         '''
         EVENT PAGE
@@ -206,22 +195,32 @@ class MainWindow(QWidget):
         self.twitch_button.setStyleSheet('color: red')
         self.twitch_button.clicked.connect(self.test_twitch)
         layout.addRow(self.twitch_button)
-        self.twitchDelay = QLineEdit("2.5")
-        layout.addRow("Stream Delay [sec]:", self.twitchDelay)
+        self.streamDelay = QLineEdit("2.5")
+        layout.addRow("Stream Delay [sec]:", self.streamDelay)
+
         layout.addRow(QLabel("⸻ or ⸻"))
 
+        # input YouTube channel if recording a YouTube livestream
+        self.youtubeUser = QLineEdit("FIRSTINRobotics")
+        layout.addRow("Youtube Username:", self.youtubeUser)
+        # gets channel ID from username
+        self.youtube_button = QPushButton("Test YouTube Livestream Connection")
+        layout.addRow(self.youtube_button)
+        self.youtube_button.setStyleSheet("color: red")
+        self.youtube_button.clicked.connect(self.get_yt_channel_ID)
         self.record_button = QPushButton(
             "Start Recording YouTube Livestream! (Polls every ten seconds to see if channel is live)"
         )
         layout.addRow(self.record_button)
         self.record_button.setStyleSheet("color: red")
-        self.record_button.clicked.connect(start_recording)
+        self.record_button.clicked.connect(lambda: start_recording(self.youtubeUserID))
         self.record_button.clicked.connect(self.recording_button)
-
         self.stop_button = QPushButton("Stop Recording YouTube Livestream.")
         layout.addRow(self.stop_button)
         self.stop_button.setStyleSheet("color: red")
         self.stop_button.clicked.connect(stop_recording)
+
+        layout.addRow(QLabel("⸻ or ⸻"))
 
         self.mp4_VOD = QPushButton("Select File")
         self.mp4_VOD.clicked.connect(self.getFileVideo)
@@ -452,17 +451,13 @@ class MainWindow(QWidget):
             self.youtubeUserID = getChannelIDFromHandle(self.youtubeUser.text())
             self.youtube_button.setText("User ID Found!")
             self.youtube_button.setStyleSheet("color: green")
-            self.channelID.setText(self.youtubeUserID)
-            self.channelID.setStyleSheet("color: green;")
             self.tab.tabBar().setTabTextColor(5, QColor("green"))
         except IndexError:
             self.youtube_button.setText("YouTube user not found!")
             self.youtube_button.setStyleSheet("color: red")
 
     def recording_button(self):
-        self.record_button.setText(
-            "Looking for/recording livestream... check TOOLS..recordings for video file! "
-        )
+        self.record_button.setText("Looking for/recording livestream... check ./TOOLS/recordings/ for video file!")
         self.record_button.setStyleSheet("color: aqua;")
         self.youtube_button.repaint()
 
@@ -563,13 +558,15 @@ class MainWindow(QWidget):
                 }
             }
 
-            if self.twitchUserID == None:
+            if (self.twitchUserID == None) and (self.youtubeUserID == None):
                 CONFIG['video'] = {'type': 'static',
                                    'filePath' : self.videoFilepath,
                                    'matchID' : self.match_type.currentText()[0] + self.match_number_ref.text(),
                                    'matchTime' : (self.match_timeMin, self.match_timeSec)}
-            else:
-                CONFIG['video'] = {'type': 'live', 'twitchUserID' : self.twitchUserID, 'streamDelay' : float(self.twitchDelay.text())}
+            elif self.twitchUserID != None:
+                CONFIG['video'] = {'type': 'live', 'twitchUserID' : self.twitchUserID, 'streamDelay' : float(self.streamDelay.text())}
+            elif self.youtubeUserID != None:
+                CONFIG['video'] = {'type': 'live', 'youtubeUserID' : self.youtubeUserID, 'streamDelay' : float(self.streamDelay.text())}
 
             self.CONFIG = CONFIG
 
@@ -628,10 +625,13 @@ class MainWindow(QWidget):
                     self.match_number_ref.setText(CONFIG['video']['matchID'][1:])
                     self.match_timeMin = CONFIG['video']['matchTime'][0]
                     self.match_timeSec = CONFIG['video']['matchTime'][1]
+                    self.timestamp_input.setText(str(self.match_timeMin)+':'+str(self.match_timeSec))
                 elif CONFIG['video']['type'] == 'live':
-                    self.twitchUserID = CONFIG['video']['twitchUserID']
-                    self.twitchDelay.setText(str(CONFIG['video']['streamDelay']))
-
+                    self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
+                    if self.twitchUserID != None:
+                        self.twitchUserID = CONFIG['video']['twitchUserID']
+                    elif self.youtubeUserID != None:
+                        self.youtubeUserID = CONFIG['video']['youtubeUserID']
         else:
             print('No CONFIG selected!')
 
