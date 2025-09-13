@@ -12,22 +12,22 @@ A python script (with GUI) for the automated processing of (long) livestream rec
 ## Upcoming Features
 - [x] Blue Alliance Support
 - [X] Use Twitch instead of a file for input
-- [ ] Load a past CONFIG to save on input time
+- [X] Load a past CONFIG to save on input time
 - [ ] Better handling of erroneous inputs
 - [ ] Update up from Python 3.12.2
 - [ ] Cool logo
 
 ## Setup for Developers; Getting FRUIT Running 
 1. Download and setup Python 3 + Virtual Environment on IDE of choice
-2. Install required packages; pip3 install -r requirements.txt
+2. Install required packages; `pip install -r requirements.txt`
 3. Add file "client_secrets" to TOOLS folder; take code from example.client_secrets and fill empty quotation marks with correct information
 4. Download the latest release version of ffmpeg https://www.gyan.dev/ffmpeg/builds/
 5. Add ffmpeg's bin folder to system path
-5A. Press Windows + S or navigate to the search bar
-5B. Look up and go to "Edit environment variables for your account"
-5C. Click Path, then click Edit
-5D. Press Browse, then select the "bin" folder inside the ffmpeg folder
-5E. Press Ok
+    - Press Windows + S or navigate to the search bar
+    - Look up and go to "Edit environment variables for your account"
+    - Click Path, then click Edit
+    - Press Browse, then select the "bin" folder inside the ffmpeg folder
+    - Press Ok
 
 ## Setup for Developers; Operating FRUIT
 1. Follow https://github.com/purduefirst/FRUIT/wiki/APIs and register for desired API keys
@@ -55,7 +55,3 @@ reenter the match type (if applicable), the match number, and timestamp, then re
 12. Notes: The "Stop Recording YouTube Livestream" button often isn't necessary, it's fine to keep recording the whole time. Use if
 a new recording is desired or if you are finished.
 13. Notes: Once clipping starts, if the app crashes or is accidentally restarted, the "Load CONFIG" button will bring back your saved info. Press Load CONFIG then scroll down and select the CONFIG file.
-
-
-
-

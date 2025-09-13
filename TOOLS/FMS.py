@@ -128,6 +128,44 @@ def rewrapMatches(matchesRaw:list, program:str):
 
     return matchesSorted
 
+def getEventInfoFromFMS(year:int, eventCode:str, program:str, authUsr:str=CREDENTIALS['FRC_username'], authKey:str=CREDENTIALS['FRC_key']):
+    """Connects to FIRST Events API and retrieves event information
+
+    Note: FTC and FRC have different response formats (especially for timezones)
+
+    Args:
+        year (int): season year
+        eventCode (str): event code
+        program (str): FIRST program; 'FRC' or 'FTC'
+        authUsr (str): username for respective FRC/FTC api
+        authKey (str): key for respective FRC/FTC api
+
+    Returns:
+        eventInfo (dict): {'code': 'INLaf', 'name': 'Boiler Bot Battle', 'timezone': 'Eastern Standard Time', ...}
+
+    """
+    # enforce program input
+    if program not in ('FRC', 'FTC'):
+        raise ValueError(f"Invalid input: {program}, must be 'FRC' or 'FTC'.")
+
+    # define API url and request headers, based on: https://frc-api-docs.firstinspires.org/#733f4607-ab40-4e00-b3e1-36cfb1a2e77e
+    if program == 'FRC':
+        url = 'https://frc-api.firstinspires.org/v3.0/'+str(year)+'/events?eventCode='+eventCode
+    elif program == 'FTC':
+        url = 'http://ftc-api.firstinspires.org/v2.0/'+str(year)+'/events?eventCode='+eventCode
+    headers = prepareHeadersFMS(authUsr, authKey)
+
+    # make the API call (separately to prevent stale results)
+    response = requests.get(url, headers=headers, verify=False).json()
+
+    # extract event information from response (dear FIRST: Why is the capitalization of 'events' different?)
+    if program == 'FRC':
+        eventInfo = response['Events'][0]
+    elif program == 'FTC':
+        eventInfo = response['events'][0]
+    
+    return eventInfo
+
 def livestreamDescription(matches:list, originMin:int, originSec:int,  originMatchID:str = 'Q1'):
     """Generates a string that can be placed in the description of a YouTube livestream recording to provide timestamps for matches
 

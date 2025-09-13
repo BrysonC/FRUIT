@@ -1,5 +1,5 @@
 # imports for GUI
-from PyQt6.QtWidgets import (QApplication, QWidget,  QFormLayout, QGridLayout, QTabWidget, QPushButton, QLineEdit, QPlainTextEdit, QLabel, QFileDialog, QComboBox, QCheckBox, QHBoxLayout)
+from PyQt6.QtWidgets import (QApplication, QWidget,  QFormLayout, QGridLayout, QTabWidget, QPushButton, QLineEdit, QPlainTextEdit, QLabel, QFileDialog, QComboBox, QCheckBox, QHBoxLayout, QStackedWidget, QVBoxLayout, QCompleter)
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtGui import QPixmap, QColor
@@ -8,6 +8,7 @@ from PyQt6.QtSvgWidgets import QSvgWidget
 
 import random       # random thumbnail generation
 import datetime     # str conversion and timeDelta
+import pytz         # timezone handling
 import os           # file IO
 import json         # CONFIG handling
 
@@ -15,6 +16,8 @@ import json         # CONFIG handling
 from TOOLS.CredentialsPopUp import CredDialog
 from TOOLS.FMS import getMatchesFromFMS
 from TOOLS.FMS import rewrapMatches
+from TOOLS.FMS import getEventInfoFromFMS
+from TOOLS.timezones import convert_windows_to_iana
 from TOOLS.YouTube import authenticate_youtube
 from TOOLS.thumbnails import generateThumbnail
 from TOOLS.TBA import postTheBlueAlliance
@@ -66,7 +69,7 @@ class MainWindow(QWidget):
          - information on how to use tool
          - mostly text
         '''
-        bodyText = "<ol style='font-size: 16px !important;'><li><b>Event Info</b>: used to obtain match details from FMS, learn more at https://frc-events.firstinspires.org/services/api</li><li>Connect to your YouTube account using the browser. Define <b>YouTube Settings</b> for video upload.</li><li>Supply <b>Thumbnail Info</b> and test its generation.</li><li>Set <b>Match Timing</b> offsets, relative to match start and scores post (in seconds).</li><li>Select the <b>Video File</b> source to be trimmed.</li><li>Connect to <b>The Blue Alliance</b> for match video visibility.</li><li><b>Bake CONFIG</b> to save on future re-entry time.</li><li>Click the <b>Make The Sauce</b> button to get everything rolling!"
+        bodyText = "<ol style='font-size: 16px !important;'><li><b>Event Info</b>: used to obtain match details from FMS, learn more at https://frc-events.firstinspires.org/services/api</li><li>Connect to your YouTube account using the browser. Define <b>YouTube Settings</b> for video upload.</li><li>Supply <b>Thumbnail Info</b> and test its generation.</li><li>Set <b>Match Timing</b> offsets, relative to match start and scores post (in seconds).</li><li>Select the <b>Video Input</b> source to be trimmed.</li><li>Connect to <b>The Blue Alliance</b> for match video visibility.</li><li><b>Bake CONFIG</b> to save on future re-entry time.</li><li>Click the <b>Make The Sauce</b> button to get everything rolling!"
 
         page_welcome = QWidget(self)
         layout = QFormLayout()
@@ -85,21 +88,28 @@ class MainWindow(QWidget):
         '''
         EVENT PAGE
          - Season Year
-         - Event Code & Name
+         - Event Code
+         - Event Name & Timezone
          - Pull from FMS
         '''
         page_event = QWidget(self)
         layout = QGridLayout()
         page_event.setLayout(layout)
+        # Event (Season) Year
         layout.addWidget(QLabel('Season Year:'), 0, 0); self.season_year = QLineEdit(self); layout.addWidget(self.season_year, 0, 1)
+        # Event Code
         layout.addWidget(QLabel('Event Code:'), 1, 0); self.event_code = QLineEdit(self); layout.addWidget(self.event_code, 1, 1)
-        layout.addWidget(QLabel('Event Name:'), 2, 0); self.event_name = QLineEdit(self); layout.addWidget(self.event_name, 2, 1)
         # FMS pull button
         self.textFMS = QLabel('<font color="red">Event not yet pulled</font>')
         self.button_FMS = QPushButton('Pull FMS')
-        self.button_FMS.clicked.connect(lambda: self.handleFMS(self.season_year.text(), self.event_code.text().upper(), self.textFMS))
-        layout.addWidget(self.button_FMS, 4, 0)
-        layout.addWidget(self.textFMS, 4, 1)
+        self.button_FMS.clicked.connect(lambda: self.handleFMS(self.season_year.text(), self.event_code.text().upper()))
+        layout.addWidget(self.button_FMS, 2, 0); layout.addWidget(self.textFMS, 2, 1)
+        # Event Name
+        layout.addWidget(QLabel('Event Name:'), 3, 0); self.event_name = QLineEdit(self); layout.addWidget(self.event_name, 3, 1)
+        # Event Timezone
+        self.event_timezone = QComboBox(); self.event_timezone.setEditable(True)
+        completerTimezone = QCompleter(pytz.all_timezones); self.event_timezone.setCompleter(completerTimezone)
+        layout.addWidget(QLabel('Event Timezone:'), 4, 0); layout.addWidget(self.event_timezone, 4, 1)
         
 
         '''
@@ -127,8 +137,6 @@ class MainWindow(QWidget):
         layout.addRow(QLabel('Tags (comma-delimited) :'), self.video_tags)
         layout.addRow(QLabel('<i>program will automatically add year, event code, and program (FRC/FTC)</i>'))
         
-        
-
         '''
         THUMBNAIL PAGE
          - Sponsor Image
@@ -187,60 +195,77 @@ class MainWindow(QWidget):
          - watch 4 seconds of clip
         '''
         page_video = QWidget(self)
-        layout = QFormLayout()
+        layout = QVBoxLayout()
         page_video.setLayout(layout)
-        layout.addRow(QLabel('<b>Provide twitch livestream OR static video file</b>'))
-        self.twitchUser = QLineEdit('firstinrobotics'); layout.addRow('Twitch User:', self.twitchUser)
+
+        # Dropdown to switch views
+        self.dropdownInput = QComboBox()
+        self.stacked_widget = QStackedWidget()
+        self.dropdownInput.addItems(["Twitch Livestream", "Static File", "YouTube Livestream (experimental)"])
+        self.dropdownInput.currentIndexChanged.connect(lambda index: self.stacked_widget.setCurrentIndex(index))
+        layout.addWidget(self.dropdownInput)
+        layout.addWidget(self.stacked_widget)
+
+        # Video Input 1: Twitch Livestream
+        video_input_Twitch = QFormLayout()
+        self.twitchUser = QLineEdit('firstinrobotics'); video_input_Twitch.addRow('Twitch User:', self.twitchUser)
         self.twitch_button = QPushButton("Test Twitch Connection")
         self.twitch_button.setStyleSheet('color: red')
         self.twitch_button.clicked.connect(self.test_twitch)
-        layout.addRow(self.twitch_button)
+        video_input_Twitch.addRow(self.twitch_button)
         self.streamDelay = QLineEdit("2.5")
-        layout.addRow("Stream Delay [sec]:", self.streamDelay)
+        video_input_Twitch.addRow("Stream Delay [sec]:", self.streamDelay)
+        Twitch_widget = QWidget()
+        Twitch_widget.setLayout(video_input_Twitch)
+        self.stacked_widget.addWidget(Twitch_widget)
 
-        layout.addRow(QLabel("⸻ or ⸻"))
-
-        # input YouTube channel if recording a YouTube livestream
-        self.youtubeUser = QLineEdit("FIRSTINRobotics")
-        layout.addRow("Youtube Username:", self.youtubeUser)
-        # gets channel ID from username
-        self.youtube_button = QPushButton("Test YouTube Livestream Connection")
-        layout.addRow(self.youtube_button)
-        self.youtube_button.setStyleSheet("color: red")
-        self.youtube_button.clicked.connect(self.get_yt_channel_ID)
-        self.record_button = QPushButton(
-            "Start Recording YouTube Livestream! (Polls every ten seconds to see if channel is live)"
-        )
-        layout.addRow(self.record_button)
-        self.record_button.setStyleSheet("color: red")
-        self.record_button.clicked.connect(lambda: start_recording(self.youtubeUserID))
-        self.record_button.clicked.connect(self.recording_button)
-        self.stop_button = QPushButton("Stop Recording YouTube Livestream.")
-        layout.addRow(self.stop_button)
-        self.stop_button.setStyleSheet("color: red")
-        self.stop_button.clicked.connect(stop_recording)
-
-        layout.addRow(QLabel("⸻ or ⸻"))
-
+        # Video Input 2: Static File
+        video_input_File = QFormLayout()
         self.mp4_VOD = QPushButton("Select File")
         self.mp4_VOD.clicked.connect(self.getFileVideo)
-        layout.addRow('Video File:', self.mp4_VOD)
+        video_input_File.addRow('Video File:', self.mp4_VOD)
         # reference match details
         self.match_type = QComboBox(); self.match_type.addItems(["Q = Quals", "P = Playoffs", "F = Finals"])
-        layout.addRow('First Match Type:', self.match_type)
-        self.match_number_ref = QLineEdit(); layout.addRow('First Match Number:', self.match_number_ref)
-        self.timestamp_input = QLineEdit(); layout.addRow('Enter timestamp (mm:ss):', self.timestamp_input)
+        video_input_File.addRow('First Match Type:', self.match_type)
+        self.match_number_ref = QLineEdit(); video_input_File.addRow('First Match Number:', self.match_number_ref)
+        self.timestamp_input = QLineEdit(); video_input_File.addRow('Enter timestamp (mm:ss):', self.timestamp_input)
         # Create a video widget and add it to the layout
         self.video_widget = QVideoWidget()
         self.video_widget.setMinimumSize(480, 270)
         self.play_button = QPushButton("Play 4 Seconds")
         self.play_button.setStyleSheet('color: red')
         self.play_button.clicked.connect(self.play_video)
-        layout.addRow(self.play_button, self.video_widget)
+        video_input_File.addRow(self.play_button, self.video_widget)
         self.media_player = QMediaPlayer()
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
         self.media_player.setVideoOutput(self.video_widget)
+        file_widget = QWidget()
+        file_widget.setLayout(video_input_File)
+        self.stacked_widget.addWidget(file_widget)
+
+        # Video Input 3: YouTube Livestream
+        video_input_YouTube = QFormLayout()
+        self.youtubeUser = QLineEdit("FIRSTINRobotics"); video_input_YouTube.addRow("Youtube Username:", self.youtubeUser)
+        # gets channel ID from username
+        self.youtube_button = QPushButton("Test YouTube Livestream Connection")
+        video_input_YouTube.addRow(self.youtube_button)
+        self.youtube_button.setStyleSheet("color: red")
+        self.youtube_button.clicked.connect(self.get_yt_channel_ID)
+        self.record_button = QPushButton(
+            "Start Recording YouTube Livestream! (Polls every ten seconds to see if channel is live)"
+        )
+        video_input_YouTube.addRow(self.record_button)
+        self.record_button.setStyleSheet("color: red")
+        self.record_button.clicked.connect(lambda: start_recording(self.youtubeUserID))
+        self.record_button.clicked.connect(self.recording_button)
+        self.stop_button = QPushButton("Stop Recording YouTube Livestream.")
+        video_input_YouTube.addRow(self.stop_button)
+        self.stop_button.setStyleSheet("color: red")
+        self.stop_button.clicked.connect(stop_recording)
+        YouTube_widget = QWidget()
+        YouTube_widget.setLayout(video_input_YouTube)
+        self.stacked_widget.addWidget(YouTube_widget)
 
         '''
         TBA PAGE
@@ -269,7 +294,7 @@ class MainWindow(QWidget):
         self.tab.addTab(page_YouTube, 'YouTube Settings')
         self.tab.addTab(page_thumbnail, 'Thumbnail Info')
         self.tab.addTab(page_timings, 'Match Timing')
-        self.tab.addTab(page_video, 'Video File')
+        self.tab.addTab(page_video, 'Video Input')
         self.tab.addTab(page_TBA, 'The Blue Alliance')
         # set tab colors
         self.tab.tabBar().setTabTextColor(1, QColor('red'))
@@ -396,9 +421,9 @@ class MainWindow(QWidget):
 
         button.setText('📁'+response[0].split('/')[-1])
     
-    def handleFMS(self, year, eventCode, text):
-        text.setText('<font color="aqua">Loading event from FMS...</font>')
-        text.repaint()
+    def handleFMS(self, year, eventCode):
+        self.textFMS.setText('<font color="aqua">Loading event from FMS...</font>')
+        self.textFMS.repaint()
 
         with open("CREDENTIALS", "r") as file:
             CREDENTIALS = json.load(file) # contains API credentials
@@ -406,20 +431,47 @@ class MainWindow(QWidget):
         try:
             if self.program.currentText() == 'FRC':
                 matchesRaw = getMatchesFromFMS(year, eventCode, self.program.currentText(), CREDENTIALS['FRC_username'], CREDENTIALS['FRC_key'])
+                eventInfo = getEventInfoFromFMS(year, eventCode, self.program.currentText(), CREDENTIALS['FRC_username'], CREDENTIALS['FRC_key'])
+                eventInfo['timezone'] = convert_windows_to_iana(eventInfo['timezone'])
             elif self.program.currentText() == 'FTC':
                 matchesRaw = getMatchesFromFMS(year, eventCode, self.program.currentText(), CREDENTIALS['FTC_username'], CREDENTIALS['FTC_key'])
+                eventInfo = getEventInfoFromFMS(year, eventCode, self.program.currentText(), CREDENTIALS['FTC_username'], CREDENTIALS['FTC_key'])
             
             self.matches = rewrapMatches(matchesRaw, self.program.currentText())
             
-            if len(self.matches) > 0:
-                text.setText('<font color="green">'+str(len(self.matches))+' matches found for '+eventCode+'.</font>')
+            # Report success of FMS pull
+            if len(self.matches) != 0:
+                self.textFMS.setText('<font color="green">'+str(len(self.matches))+' matches found for '+eventCode+'.</font>')
             else:
-                text.setText('<font color="yellow">'+str(len(self.matches))+' matches found for '+eventCode+'. If event has begun, verify event code.</font>')
+                self.textFMS.setText('<font color="yellow">No matches found for '+eventCode+'. If event has begun, verify event code.</font>')
+            
+            # Update status bar counters
             self.status_seen.setText(f" SEEN: {len(self.matches)}")
+            with open('log/send.txt', 'r') as file:
+                eventMatchesSent = len([line.strip() for line in file if line.startswith(eventCode.upper())])
+            self.status_built.setText(f"BUILT: {eventMatchesSent}")
+            self.status_sent.setText(f" SENT: {eventMatchesSent}")
+
+            # Update event fields if empty
+            if self.event_name.text() == '':
+                self.event_name.setText(eventInfo['name'])
+            if self.event_timezone.currentText() == '':
+                self.event_timezone.setCurrentText(eventInfo['timezone'])
+            if self.eventBuilding.text() == '':
+                self.eventBuilding.setText(eventInfo['venue'])
+            if self.eventCity.text() == '':
+                self.eventCity.setText(eventInfo['city']+', '+eventInfo['stateprov'])
+            if self.eventDates.text() == '':
+                startDate = datetime.datetime.fromisoformat(eventInfo['dateStart']).date()
+                endDate = datetime.datetime.fromisoformat(eventInfo['dateEnd']).date()
+                if startDate == endDate:
+                    self.eventDates.setText(startDate.strftime("%m/%d/%Y"))
+                else:
+                    self.eventDates.setText(f'{startDate.month}/{startDate.day}-{endDate.day}/{endDate.year}')
 
             self.tab.tabBar().setTabTextColor(1, QColor('green'))
         except json.JSONDecodeError:
-            text.setText('<font color="red">Event does not exist!</font>')
+            self.textFMS.setText('<font color="red">Event does not exist!</font>')
             self.tab.tabBar().setTabTextColor(1, QColor('red'))
     
     def test_twitch(self):
@@ -534,6 +586,7 @@ class MainWindow(QWidget):
                 'event' : {
                     'code' : self.event_code.text().upper(),
                     'name' : self.event_name.text(),
+                    'timezone' : self.event_timezone.currentText(),
                     'details' : self.eventBuilding.text()+'\n'+self.eventCity.text()+'\n'+self.eventDates.text(),
                     'logoSponsor' : self.logoSponsorFilepath,
                     'forceDetails' : bool(self.thumbnail_force.isChecked())
@@ -557,17 +610,21 @@ class MainWindow(QWidget):
                     'eventKey': self.TBA_eventCode.text()
                 }
             }
-
-            if (self.twitchUserID == None) and (self.youtubeUserID == None):
+            if 'twitch' in self.dropdownInput.currentText().lower():
+                CONFIG['video'] = {'type': 'live_twitch', 
+                                   'twitchUserID' : self.twitchUserID, 
+                                   'streamDelay' : float(self.streamDelay.text())}
+            elif 'youtube' in self.dropdownInput.currentText().lower():
+                CONFIG['video'] = {'type': 'live_youtube', 
+                                   'youtubeUserID' : self.youtubeUserID, 
+                                   'streamDelay' : float(self.streamDelay.text()),
+                                   'recordingStartTime': 'TODO: add start time feature'}
+            elif 'static' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'static',
                                    'filePath' : self.videoFilepath,
                                    'matchID' : self.match_type.currentText()[0] + self.match_number_ref.text(),
                                    'matchTime' : (self.match_timeMin, self.match_timeSec)}
-            elif self.twitchUserID != None:
-                CONFIG['video'] = {'type': 'live', 'twitchUserID' : self.twitchUserID, 'streamDelay' : float(self.streamDelay.text())}
-            elif self.youtubeUserID != None:
-                CONFIG['video'] = {'type': 'live', 'youtubeUserID' : self.youtubeUserID, 'streamDelay' : float(self.streamDelay.text())}
-
+            
             self.CONFIG = CONFIG
 
             with open("CONFIG", "w") as file:
@@ -597,11 +654,14 @@ class MainWindow(QWidget):
 
                 self.event_code.setText(CONFIG['event']['code'])
                 self.event_name.setText(CONFIG['event']['name'])
+                self.event_timezone.setCurrentText(CONFIG['event']['timezone'])
                 eventDetails = CONFIG['event']['details'].split('\n')
                 self.eventBuilding.setText(eventDetails[0])
                 self.eventCity.setText(eventDetails[1])
                 self.eventDates.setText(eventDetails[2])
                 self.logoSponsorFilepath = CONFIG['event']['logoSponsor']
+                if self.logoSponsorFilepath != None:
+                    self.img_EventSponsor.setText('📁'+self.logoSponsorFilepath.split('/')[-1])
                 self.thumbnail_force.setChecked(CONFIG['event']['forceDetails'])
 
                 self.season_year.setText(str(CONFIG['season']['year']))
@@ -621,17 +681,23 @@ class MainWindow(QWidget):
 
                 if CONFIG['video']['type'] == 'static':
                     self.videoFilepath = CONFIG['video']['filePath']
+                    if CONFIG['video']['filePath'] != None:
+                        self.mp4_VOD.setText('📁'+CONFIG['video']['filePath'].split('/')[-1])
+                        self.media_player.setSource(QUrl.fromLocalFile(CONFIG['video']['filePath']))
                     self.match_type.setCurrentText({'Q':"Q = Quals", 'P':"P = Playoffs", 'F':"F = Finals"}[CONFIG['video']['matchID'][0]])
                     self.match_number_ref.setText(CONFIG['video']['matchID'][1:])
                     self.match_timeMin = CONFIG['video']['matchTime'][0]
                     self.match_timeSec = CONFIG['video']['matchTime'][1]
                     self.timestamp_input.setText(str(self.match_timeMin)+':'+str(self.match_timeSec))
-                elif CONFIG['video']['type'] == 'live':
+                    self.dropdownInput.setCurrentText("Static File")
+                elif 'live' in CONFIG['video']['type']:
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
                     if self.twitchUserID != None:
                         self.twitchUserID = CONFIG['video']['twitchUserID']
+                        self.dropdownInput.setCurrentText("Twitch Livestream")
                     elif self.youtubeUserID != None:
                         self.youtubeUserID = CONFIG['video']['youtubeUserID']
+                        self.dropdownInput.setCurrentText("YouTube Livestream (experimental)")
         else:
             print('No CONFIG selected!')
 
