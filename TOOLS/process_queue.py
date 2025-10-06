@@ -5,8 +5,11 @@ import threading #multiprocess
 import math #ceil for Twitch segments
 import os #checking if a file exists
 
-from moviepy.editor import VideoFileClip, concatenate_videoclips
-from moviepy.audio.fx.all import audio_fadeout, audio_fadein
+from moviepy import VideoFileClip, concatenate_videoclips
+from moviepy.audio.fx.AudioFadeIn import AudioFadeIn
+#from moviepy.video.fx.MultiplySpeed import MultiplySpeed
+#from moviepy.audio.fx.MultiplyVolume import MultiplyVolume
+from moviepy.audio.fx.AudioFadeOut import AudioFadeOut
 
 from TOOLS.Twitch import getLatestTwitchVODs
 from TOOLS.Twitch import durationStr2Sec
@@ -179,8 +182,9 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
                 with VideoFileClip('output/temp.mp4') as video:
 
                     # clip the match and the scores, adding audio fades to taste
-                    seg_match = audio_fadein(video.subclip(trim - user_data['season']['secondsBeforeStart'], trim + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']), 0.5)
-                    seg_score = audio_fadeout(video.subclip(trim + postStartDuration, trim + postEndDuration), 2)
+                    seg_match = video.subclipped(trim - user_data['season']['secondsBeforeStart'], trim + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']).with_effects([AudioFadeIn(0.5)])
+                    #seg_wait = video.subclipped(trim + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd'], trim + postStartDuration).with_effects([MultiplyVolume(factor=0), MultiplySpeed(final_duration=2)])
+                    seg_score = video.subclipped(trim + postStartDuration, trim + postEndDuration).with_effects([AudioFadeOut(2)])
 
                     # merge together match and scores
                     final = concatenate_videoclips([seg_match, seg_score])
@@ -236,8 +240,9 @@ def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matche
 
                 with VideoFileClip(user_data['video']['filePath']) as video:
                     # clip the match and the scores, adding audio fades to taste
-                    seg_match = audio_fadein(video.subclip(secStart - user_data['season']['secondsBeforeStart'], secStart + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']), 0.5)
-                    seg_score = audio_fadeout(video.subclip(secPost - user_data['season']['secondsBeforePost'], secPost + user_data['season']['secondsAfterPost']), 2)
+                    seg_match = video.subclipped(secStart - user_data['season']['secondsBeforeStart'], secStart + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']).with_effects([AudioFadeIn(0.5)])
+                    #seg_wait = video.subclipped(secStart + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd'], secPost - user_data['season']['secondsBeforePost']).with_effects([MultiplyVolume(factor=0), MultiplySpeed(final_duration=3)])
+                    seg_score = video.subclipped(secPost - user_data['season']['secondsBeforePost'], secPost + user_data['season']['secondsAfterPost']).with_effects([AudioFadeOut(2)])
 
                     # merge together match and scores
                     final = concatenate_videoclips([seg_match, seg_score])
