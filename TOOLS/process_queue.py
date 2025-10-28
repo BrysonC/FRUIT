@@ -3,7 +3,6 @@ import time #waiting
 import datetime #datetime math
 import threading #multiprocess
 import math #ceil for Twitch segments
-import os #checking if a file exists
 
 from moviepy import VideoFileClip, concatenate_videoclips
 from moviepy.audio.fx.AudioFadeIn import AudioFadeIn
@@ -133,7 +132,7 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
             continue
 
         try:
-            # grab a match from the build queue, try for 30 seconds then timeout
+            # grab a match from the build queue, 30 seconds wait for timeout
             match = queue_build.get(timeout=30)
 
             # determine which VOD contains the match
@@ -150,10 +149,11 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
                     print('bad times ahead')
 
                 # default exit is latest VOD
+                pass
 
             # double check VOD and match are on the same day (prevents stale)
             if (match['start'] - vod['created_at']).total_seconds() > (24*60*60):
-                print('ope!')
+                print('OPE! the VOD is too old for this match')
             
             # prepare VOD cut start-point
             startSeconds = ((match['start'] - vod['created_at']).total_seconds() +user_data['video']['streamDelay'] -user_data['season']['secondsBeforeStart']) #add stream delay (time from event to server) & subtract countdown
@@ -161,28 +161,34 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
             if startSeconds < 0:
                 raise ValueError("Negative start time.")
 
+            """
+            Legacy code for using downloadTwitchClip_streamlink
+
             trim = startSeconds % 10
             if trim > 9:
                 startSegment = ((math.ceil(startSeconds)//10)-1)*10
             else:
                 startSegment = (math.ceil(startSeconds)//10)*10
+            """
+            # how many seconds into the downloaded clip the match starts
+            trim = (startSeconds - int(startSeconds)) + user_data['season']['secondsBeforeStart']
             
-            # prepare VOD clip duration
+            # prepare score post durations
             postStartDuration = (match['post'] - match['start']).total_seconds() - user_data['season']['secondsBeforePost']
             postEndDuration = (match['post'] - match['start']).total_seconds() + user_data['season']['secondsAfterPost']
-            downloadDuration = str(datetime.timedelta(seconds=(((trim + postEndDuration) // 10)+2)*10))
+            
+            # convert clip timestamps to strings
+            startTimestampStr = str(datetime.timedelta(seconds=int(startSeconds)))
+            endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(startSeconds+postEndDuration)+11))) # add 11 seconds to ensure we get the end
 
-            # get clip from Twitch that contains both match + its score
-            downloadTwitchClip(int(vod['id']), str(datetime.timedelta(seconds=(startSegment))), downloadDuration, 'output/temp.mp4')
-
-            # update trim to start of match (didn't do this before such that we make sure to grab that Twitch segment)
-            trim += user_data['season']['secondsBeforeStart']
+            # get clip from Twitch that contains both match + its score, save in as output/temp.mp4
+            downloadTwitchClip(int(vod['id']), startTimestampStr, endTimestampStr, 'output/temp.mp4')
 
             try:
                 with VideoFileClip('output/temp.mp4') as video:
 
                     # clip the match and the scores, adding audio fades to taste
-                    seg_match = video.subclipped(trim - user_data['season']['secondsBeforeStart'], trim + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']).with_effects([AudioFadeIn(0.5)])
+                    seg_match = video.subclipped(trim - user_data['season']['secondsBeforeStart'], trim + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']).with_effects([AudioFadeIn(0.5), AudioFadeOut(1)])
                     #seg_wait = video.subclipped(trim + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd'], trim + postStartDuration).with_effects([MultiplyVolume(factor=0), MultiplySpeed(final_duration=2)])
                     seg_score = video.subclipped(trim + postStartDuration, trim + postEndDuration).with_effects([AudioFadeOut(2)])
 

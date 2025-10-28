@@ -1,7 +1,8 @@
 import requests
 import os
 import subprocess
-import streamlink
+import datetime
+import yt_dlp
 
 def getTwitchAuthHeader(client_id:str, client_secret:str):
     """
@@ -91,11 +92,11 @@ def getLatestTwitchVODs(client_id:str, client_secret:str, user_id:str):
 
     return vods_data
 
-def downloadTwitchClip(vod_id: int, startTimestamp: str, durationSeconds: str, outputFileName: str):
+def downloadTwitchClip_streamlink(vod_id: int, startTimestamp: str, durationSeconds: str, outputFileName: str):
     """
-    Downloads a clip of a Twitch VOD, be wary of weird timestamps
+    OLD: Downloads a clip of a Twitch VOD using streamlink, be wary of weird timestamps
         * VODs are broken into 10 second segments (m3u8 process)
-        * segments are from XX:X1 to XX:X1 + 9.999 but return XX:XX to XX:XX + 10 ¯\_(ツ)_/¯
+        * segments are from XX:X1 to XX:X1 + 9.999 but return XX:XX to XX:XX + 10 ¯\\_(ツ)_//¯
 
     Args:
         vod_id (int): twitch VOD ID
@@ -120,6 +121,35 @@ def downloadTwitchClip(vod_id: int, startTimestamp: str, durationSeconds: str, o
         '-o', outputFileName,
         '--hls-live-edge', '1'
     ]
+    
+    # run command in terminal
+    subprocess.run(command)
+
+def downloadTwitchClip(vod_id: int, startTimestamp: str, endTimestamp: str, outputFileName: str):
+    """
+    Downloads a clip of a Twitch VOD using yt-dlp, be wary of weird timestamps
+        * VODs are broken into 10 second segments (m3u8 / HLS process)
+
+    Args:
+        vod_id (int): twitch VOD ID
+        startTimestamp (str): timestamp to start at (relative to start of VOD), H:MM:SS format
+        endTimestamp (str): timestamp to end at (relative to start of VOD), H:MM:SS format
+        outputFileName (str): location & name of output filepath
+
+    """
+
+    # prepare command
+    command = [
+        "yt-dlp", "-q", # run yt-dlp in quiet mode
+        "https://www.twitch.tv/videos/"+str(vod_id), # Twitch VOD URL
+        "--download-sections", f"*{startTimestamp}-{endTimestamp}", # timestamp sections to download
+        "--force-overwrites", # overwrite existing file
+        "--force-keyframes-at-cuts", # get around Twitch's weird segmenting
+        "-o", outputFileName, # output filename
+        "--merge-output-format", "mp4"
+    ]
+
+    print(f"Downloading Twitch VOD {vod_id} clip from {startTimestamp} to {endTimestamp}.")
     
     # run command in terminal
     subprocess.run(command)

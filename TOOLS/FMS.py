@@ -71,8 +71,8 @@ def getMatchesFromFMS(year:int, eventCode:str, program:str, authUsr:str=CREDENTI
     headers = prepareHeadersFMS(authUsr, authKey)
 
     # make the API call (separately to prevent stale results)
-    responseQuals = requests.get(url+'?tournamentLevel=Qualification', headers=headers, verify=False)
-    responsePlayoffs = requests.get(url+'?tournamentLevel=Playoff', headers=headers, verify=False)
+    responseQuals = requests.get(url+'?tournamentLevel=Qualification', headers=headers)
+    responsePlayoffs = requests.get(url+'?tournamentLevel=Playoff', headers=headers)
 
     # combine the two match calls together
     if program == 'FRC':
@@ -156,7 +156,7 @@ def getEventInfoFromFMS(year:int, eventCode:str, program:str, authUsr:str=CREDEN
     headers = prepareHeadersFMS(authUsr, authKey)
 
     # make the API call (separately to prevent stale results)
-    response = requests.get(url, headers=headers, verify=False).json()
+    response = requests.get(url, headers=headers).json()
 
     # extract event information from response (dear FIRST: Why is the capitalization of 'events' different?)
     if program == 'FRC':

@@ -59,7 +59,7 @@ class MainWindow(QWidget):
         set window title, size and layout
         '''
         self.setWindowTitle('FRUIT by Bryce Castle')
-        self.setGeometry(500, 300, 800, 400)
+        self.setGeometry(250, 250, 800, 400)
         main_layout = QGridLayout(self)
         self.setLayout(main_layout)
         self.tab = QTabWidget(self)
@@ -213,7 +213,7 @@ class MainWindow(QWidget):
         self.twitch_button.setStyleSheet('color: red')
         self.twitch_button.clicked.connect(self.test_twitch)
         video_input_Twitch.addRow(self.twitch_button)
-        self.streamDelay = QLineEdit("2.5")
+        self.streamDelay = QLineEdit("4")
         video_input_Twitch.addRow("Stream Delay [sec]:", self.streamDelay)
         Twitch_widget = QWidget()
         Twitch_widget.setLayout(video_input_Twitch)
@@ -366,14 +366,14 @@ class MainWindow(QWidget):
 
         # Create threads for each queue
         self.thread_seek = threading.Thread(target=process_queue_seek, args=(self.CONFIG, self.stop_event, self.status_seen, CREDENTIALS))
-        if self.CONFIG['video']['type'] == 'live':
+        if self.CONFIG['video']['type'].startswith('live'):
             self.thread_build = threading.Thread(target=process_queue_build_live, args=(self.CONFIG, self.stop_event, self.status_built))
         elif self.CONFIG['video']['type'] == 'static':
             self.thread_build = threading.Thread(target=process_queue_build_static, args=(self.CONFIG, self.stop_event, self.status_built, self.matches))
         self.thread_send = threading.Thread(target=process_queue_send, args=(self.CONFIG, self.stop_event, self.status_sent, self.YouTube))
 
         # Start the threads
-        if self.CONFIG['video']['type'] == 'live':
+        if self.CONFIG['video']['type'].startswith('live'):
             watch(self.CONFIG['video']['twitchUserID'], self.stop_event, CREDENTIALS)
         self.thread_seek.start()
         self.thread_build.start()
@@ -612,10 +612,12 @@ class MainWindow(QWidget):
             }
             if 'twitch' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'live_twitch', 
+                                   'twitchUsername' : self.twitchUser.text(),
                                    'twitchUserID' : self.twitchUserID, 
                                    'streamDelay' : float(self.streamDelay.text())}
             elif 'youtube' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'live_youtube', 
+                                   'youtubeUsername' : self.youtubeUser.text(),
                                    'youtubeUserID' : self.youtubeUserID, 
                                    'streamDelay' : float(self.streamDelay.text()),
                                    'recordingStartTime': 'TODO: add start time feature'}
@@ -690,12 +692,14 @@ class MainWindow(QWidget):
                     self.match_timeSec = CONFIG['video']['matchTime'][1]
                     self.timestamp_input.setText(str(self.match_timeMin)+':'+str(self.match_timeSec))
                     self.dropdownInput.setCurrentText("Static File")
-                elif 'live' in CONFIG['video']['type']:
+                elif CONFIG['video']['type'].startswith('live'):
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
                     if self.twitchUserID != None:
+                        self.twitchUser.setText(CONFIG['video']['twitchUsername'])
                         self.twitchUserID = CONFIG['video']['twitchUserID']
                         self.dropdownInput.setCurrentText("Twitch Livestream")
                     elif self.youtubeUserID != None:
+                        self.youtubeUser.setText(CONFIG['video']['youtubeUsername'])
                         self.youtubeUserID = CONFIG['video']['youtubeUserID']
                         self.dropdownInput.setCurrentText("YouTube Livestream (experimental)")
         else:
