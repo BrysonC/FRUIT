@@ -8,6 +8,7 @@ CREDENTIALS
 trial.png
 client_secret.json
 *.mp4
+*.CONFIG
 
 # VS Code settings
 .vs/

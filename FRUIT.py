@@ -76,10 +76,6 @@ class MainWindow(QWidget):
         page_welcome.setLayout(layout)
         layout.addRow(QLabel("<h1>FIRST Robotics Uploader from an Indiana Teammate</h1>\n<i>Make each tab green then you're ready to proceed.</i>"))
         layout.addRow(QLabel(bodyText))
-        # select program (FRC/FTC)
-        self.program = QComboBox()
-        self.program.addItems(["FRC", "FTC"])
-        layout.addRow("Select program:", self.program)
         # set/check credentials via dialog pop-up window
         self.credentialsButton = QPushButton("Set/Check Credentials", self)
         self.credentialsButton.clicked.connect(lambda: CredDialog(self).exec())
@@ -87,29 +83,36 @@ class MainWindow(QWidget):
 
         '''
         EVENT PAGE
+         - Program (FRC/FTC)
          - Season Year
          - Event Code
          - Event Name & Timezone
          - Pull from FMS
         '''
         page_event = QWidget(self)
-        layout = QGridLayout()
+        layout = QFormLayout()
         page_event.setLayout(layout)
+        # select program (FRC/FTC)
+        self.program = QComboBox(); self.program.addItems(["FRC", "FTC"])
+        layout.addRow(QLabel("Select program:"), self.program)
         # Event (Season) Year
-        layout.addWidget(QLabel('Season Year:'), 0, 0); self.season_year = QLineEdit(self); layout.addWidget(self.season_year, 0, 1)
+        self.season_year = QComboBox(); self.season_year.addItems(["2025", "2024"])
+        layout.addRow(QLabel('Season Year:'), self.season_year)
         # Event Code
-        layout.addWidget(QLabel('Event Code:'), 1, 0); self.event_code = QLineEdit(self); layout.addWidget(self.event_code, 1, 1)
+        self.event_code = QLineEdit(self);
+        layout.addRow(QLabel('Event Code:'), self.event_code)
         # FMS pull button
         self.textFMS = QLabel('<font color="red">Event not yet pulled</font>')
         self.button_FMS = QPushButton('Pull FMS')
-        self.button_FMS.clicked.connect(lambda: self.handleFMS(self.season_year.text(), self.event_code.text().upper()))
-        layout.addWidget(self.button_FMS, 2, 0); layout.addWidget(self.textFMS, 2, 1)
+        self.button_FMS.clicked.connect(lambda: self.handleFMS(self.season_year.currentText(), self.event_code.text().upper()))
+        layout.addRow(self.button_FMS, self.textFMS)
         # Event Name
-        layout.addWidget(QLabel('Event Name:'), 3, 0); self.event_name = QLineEdit(self); layout.addWidget(self.event_name, 3, 1)
+        self.event_name = QLineEdit(self);
+        layout.addRow(QLabel('Event Name:'), self.event_name)
         # Event Timezone
         self.event_timezone = QComboBox(); self.event_timezone.setEditable(True)
         completerTimezone = QCompleter(pytz.all_timezones); self.event_timezone.setCompleter(completerTimezone)
-        layout.addWidget(QLabel('Event Timezone:'), 4, 0); layout.addWidget(self.event_timezone, 4, 1)
+        layout.addRow(QLabel('Event Timezone:'), self.event_timezone)
         
 
         '''
@@ -592,7 +595,7 @@ class MainWindow(QWidget):
                     'forceDetails' : bool(self.thumbnail_force.isChecked())
                 },
                 'season' : {
-                    'year' : -1 if self.season_year.text() == '' else int(self.season_year.text()),
+                    'year' : int(self.season_year.currentText()),
                     'secondsBeforeStart' : float(self.season_secondsBefore.text()),
                     'secondsOfMatch' : float(self.season_matchDuration.text()), #auto + bell (~5) + teleop
                     'secondsAfterEnd' : float(self.season_secondsAfterEnd.text()),
@@ -666,7 +669,7 @@ class MainWindow(QWidget):
                     self.img_EventSponsor.setText('📁'+self.logoSponsorFilepath.split('/')[-1])
                 self.thumbnail_force.setChecked(CONFIG['event']['forceDetails'])
 
-                self.season_year.setText(str(CONFIG['season']['year']))
+                self.season_year.setCurrentText(str(CONFIG['season']['year']))
                 self.season_secondsBefore.setText(str(CONFIG['season']['secondsBeforeStart']))
                 self.season_matchDuration.setText(str(CONFIG['season']['secondsOfMatch']))
                 self.season_secondsAfterEnd.setText(str(CONFIG['season']['secondsAfterEnd']))
