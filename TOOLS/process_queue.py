@@ -2,6 +2,7 @@ import queue #queues
 import time #waiting
 import datetime #datetime math
 import threading #multiprocess
+import subprocess #ffmpeg calls
 import math #ceil for Twitch segments
 
 from moviepy import VideoFileClip, concatenate_videoclips
@@ -113,6 +114,100 @@ def process_queue_seek(user_data, stop_event, QLabelCounter, CREDENTIALS):
         # wait a little bit before looking for new matches
         time.sleep(100)
 
+def build_video_moviepy(user_data:dict, secStart:float, secPost:float, outputFilename='output/match.mp4'):
+    """
+    Creates match video using moviepy from a local file
+
+    Args:
+        user_data (dict): user inputs from FRUIT GUI
+            - user_data['video']['filePath'] (str): path to local video file
+            - user_data['season']['secondsBeforeStart'] (float): seconds to include before match start
+            - user_data['season']['secondsOfMatch'] (float): seconds to include of match play
+            - user_data['season']['secondsAfterEnd'] (float): seconds to include after match end
+            - user_data['season']['secondsBeforePost'] (float): seconds to include before score post
+            - user_data['season']['secondsAfterPost'] (float): seconds to include after score post
+        secStart (float): seconds into the video that the match starts
+        secPost (float): seconds into the video that the scores post
+        outputFilename (str): filename to save the output video as
+
+    """
+    with VideoFileClip(user_data['video']['filePath']) as video:
+        # clip the match and the scores, adding audio fades to taste
+        seg_match = video.subclipped(secStart - user_data['season']['secondsBeforeStart'], secStart + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']).with_effects([AudioFadeIn(0.5)])
+        #seg_wait = video.subclipped(secStart + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd'], secPost - user_data['season']['secondsBeforePost']).with_effects([MultiplyVolume(factor=0), MultiplySpeed(final_duration=3)])
+        seg_score = video.subclipped(secPost - user_data['season']['secondsBeforePost'], secPost + user_data['season']['secondsAfterPost']).with_effects([AudioFadeOut(2)])
+
+        # merge together match and scores
+        final = concatenate_videoclips([seg_match, seg_score])
+
+        # save the results as a file
+        final.write_videofile(outputFilename, audio_codec='aac')
+
+def build_video_ffmpeg(user_data:dict, secStart:float, secPost:float, outputFilename='output/match.mp4'):
+    """
+    Creates match video using ffmpeg from a local file
+
+    Args:
+        user_data (dict): user inputs from FRUIT GUI
+            - user_data['video']['filePath'] (str): path to local video file
+            - user_data['season']['secondsBeforeStart'] (float): seconds to include before match start
+            - user_data['season']['secondsOfMatch'] (float): seconds to include of match play
+            - user_data['season']['secondsAfterEnd'] (float): seconds to include after match end
+            - user_data['season']['secondsBeforePost'] (float): seconds to include before score post
+            - user_data['season']['secondsAfterPost'] (float): seconds to include after score post
+        secStart (float): seconds into the video that the match starts
+        secPost (float): seconds into the video that the scores post
+        outputFilename (str): filename to save the output video as
+
+    """
+    input_file = user_data['video']['filePath']
+
+    # Calculate timings
+    match_duration = (
+        user_data['season']['secondsBeforeStart'] +
+        user_data['season']['secondsOfMatch'] +
+        user_data['season']['secondsAfterEnd'])
+    score_start = secPost - user_data['season']['secondsBeforePost']
+    score_duration = user_data['season']['secondsBeforePost'] + user_data['season']['secondsAfterPost']
+
+    # Filepaths
+    match_file = 'input/temp/match.mp4'
+    score_file = 'input/temp/score.mp4'
+
+    # Extract match segment with audio fades
+    subprocess.run([
+        'ffmpeg', '-y',
+        "-loglevel", "error",
+        '-ss', str(secStart),
+        '-t', str(match_duration),
+        '-i', input_file,
+        '-af', f'afade=t=in:st=0:d=0.5,afade=t=out:st={match_duration - 1}:d=1',
+        '-c:v', 'libx264',
+        '-c:a', 'aac',
+        str(match_file)
+    ], check=True)
+
+    # Extract score segment with audio fade out
+    subprocess.run([
+        'ffmpeg', '-y',
+        "-loglevel", "error",
+        '-ss', str(score_start),
+        '-t', str(score_duration),
+        '-i', input_file,
+        '-af', f'afade=t=in:st=0:d=0.5,afade=t=out:st={score_duration - 2}:d=2',
+        '-c:v', 'libx264',
+        '-c:a', 'aac',
+        str(score_file)], check=True)
+
+    # Concatenate segments
+    subprocess.run([
+        "ffmpeg", "-y",
+        "-loglevel", "error",
+        "-f", "concat",
+        "-i", "input/temp/concatenate.txt",
+        "-c", "copy",
+        str(outputFilename)], check=True)
+
 def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVODs:dict=VODs):
     """
     Creates match video using Twitch VOD
@@ -173,31 +268,28 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
             # how many seconds into the downloaded clip the match starts
             trim = (startSeconds - int(startSeconds)) + user_data['season']['secondsBeforeStart']
             
-            # prepare score post durations
-            postStartDuration = (match['post'] - match['start']).total_seconds() - user_data['season']['secondsBeforePost']
+            # prepare score post times
+            secPost = (match['post'] - match['start']).total_seconds() + trim
             postEndDuration = (match['post'] - match['start']).total_seconds() + user_data['season']['secondsAfterPost']
             
             # convert clip timestamps to strings
             startTimestampStr = str(datetime.timedelta(seconds=int(startSeconds)))
             endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(startSeconds+postEndDuration)+11))) # add 11 seconds to ensure we get the end
 
-            # get clip from Twitch that contains both match + its score, save in as output/temp.mp4
-            downloadTwitchClip(int(vod['id']), startTimestampStr, endTimestampStr, 'output/temp.mp4')
+            # get clip from Twitch that contains both match + its score
+            downloadTwitchClip(int(vod['id']), startTimestampStr, endTimestampStr, 'input/temp/twitchClip.mp4')
 
             try:
-                with VideoFileClip('output/temp.mp4') as video:
-
-                    # clip the match and the scores, adding audio fades to taste
-                    seg_match = video.subclipped(trim - user_data['season']['secondsBeforeStart'], trim + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']).with_effects([AudioFadeIn(0.5), AudioFadeOut(1)])
-                    #seg_wait = video.subclipped(trim + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd'], trim + postStartDuration).with_effects([MultiplyVolume(factor=0), MultiplySpeed(final_duration=2)])
-                    seg_score = video.subclipped(trim + postStartDuration, trim + postEndDuration).with_effects([AudioFadeOut(2)])
-
-                    # merge together match and scores
-                    final = concatenate_videoclips([seg_match, seg_score])
-
-                    # save the results as a file
-                    final.write_videofile('output/'+match2str(match, user_data['event']['code'])+'.mp4', audio_codec='aac')
+                # prepare the output filename
+                outputFilename = 'output/'+match2str(match, user_data['event']['code'])+'.mp4'
                 
+                # build the video from the downloaded clip
+                if user_data['buildMethod'] == 'moviepy':
+                    build_video_moviepy(user_data, trim, secPost, outputFilename)
+                elif user_data['buildMethod'] == 'ffmpeg':
+                    build_video_ffmpeg(user_data, trim, secPost, outputFilename)
+                
+                # add the match to the send queue, update count and log
                 queue_send.put(match)
                 incrementCountText(QLabelCounter)
                 print("BUILT: "+match2str(match, user_data['event']['code']))
@@ -242,20 +334,16 @@ def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matche
                 secStart = (match['start'] - fileMatchStart).total_seconds() + fileSecStart 
                 secPost = (match['post'] - fileMatchStart).total_seconds() + fileSecStart
 
+                # prepare the output filename
                 outputFilename = 'output/'+match2str(match, user_data['event']['code'])+'.mp4'
 
-                with VideoFileClip(user_data['video']['filePath']) as video:
-                    # clip the match and the scores, adding audio fades to taste
-                    seg_match = video.subclipped(secStart - user_data['season']['secondsBeforeStart'], secStart + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd']).with_effects([AudioFadeIn(0.5)])
-                    #seg_wait = video.subclipped(secStart + user_data['season']['secondsOfMatch'] + user_data['season']['secondsAfterEnd'], secPost - user_data['season']['secondsBeforePost']).with_effects([MultiplyVolume(factor=0), MultiplySpeed(final_duration=3)])
-                    seg_score = video.subclipped(secPost - user_data['season']['secondsBeforePost'], secPost + user_data['season']['secondsAfterPost']).with_effects([AudioFadeOut(2)])
-
-                    # merge together match and scores
-                    final = concatenate_videoclips([seg_match, seg_score])
-
-                    # save the results as a file
-                    final.write_videofile(outputFilename, audio_codec='aac')
+                # build the video from the downloaded clip
+                if user_data['buildMethod'] == 'moviepy':
+                    build_video_moviepy(user_data, secStart, secPost, outputFilename)
+                elif user_data['buildMethod'] == 'ffmpeg':
+                    build_video_ffmpeg(user_data, secStart, secPost, outputFilename)
                 
+                # add the match to the send queue, update count and log
                 queue_send.put(match)
                 incrementCountText(QLabelCounter)
                 print("BUILT: "+match2str(match, user_data['event']['code']))

@@ -38,7 +38,7 @@ from TOOLS.ffmpegrecord import stop_recording
 os.makedirs('log/', exist_ok=True)
 open('log/seek.txt', 'a+').close()
 open('log/send.txt', 'a+').close()
-os.makedirs('output/', exist_ok=True)
+os.makedirs('input/temp', exist_ok=True)
 os.makedirs('output/thumbnails', exist_ok=True)
 
 # translator for symbols
@@ -203,10 +203,13 @@ class MainWindow(QWidget):
 
         # Dropdown to switch views
         self.dropdownInput = QComboBox()
+        self.dropdownBuildMethod = QComboBox()
         self.stacked_widget = QStackedWidget()
         self.dropdownInput.addItems(["Twitch Livestream", "Static File", "YouTube Livestream (experimental)"])
+        self.dropdownBuildMethod.addItems(["moviepy", "ffmpeg"])
         self.dropdownInput.currentIndexChanged.connect(lambda index: self.stacked_widget.setCurrentIndex(index))
         layout.addWidget(self.dropdownInput)
+        layout.addWidget(self.dropdownBuildMethod)
         layout.addWidget(self.stacked_widget)
 
         # Video Input 1: Twitch Livestream
@@ -613,16 +616,21 @@ class MainWindow(QWidget):
                     'eventKey': self.TBA_eventCode.text()
                 }
             }
+
+            CONFIG['buildMethod'] = self.dropdownBuildMethod.currentText()
+
             if 'twitch' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'live_twitch', 
                                    'twitchUsername' : self.twitchUser.text(),
                                    'twitchUserID' : self.twitchUserID, 
-                                   'streamDelay' : float(self.streamDelay.text())}
+                                   'streamDelay' : float(self.streamDelay.text()),
+                                   'filePath' : 'input/temp/twitchClip.mp4'}
             elif 'youtube' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'live_youtube', 
                                    'youtubeUsername' : self.youtubeUser.text(),
                                    'youtubeUserID' : self.youtubeUserID, 
                                    'streamDelay' : float(self.streamDelay.text()),
+                                   'filePath' : 'input/temp/youtubeClip.mp4',
                                    'recordingStartTime': 'TODO: add start time feature'}
             elif 'static' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'static',
@@ -684,6 +692,8 @@ class MainWindow(QWidget):
                 self.TBA_AuthSecret.setText(CONFIG['TBA']['Auth_Secret'])
                 self.TBA_eventCode.setText(CONFIG['TBA']['eventKey'])
 
+                self.dropdownBuildMethod.setCurrentText(CONFIG['buildMethod'])
+                
                 if CONFIG['video']['type'] == 'static':
                     self.videoFilepath = CONFIG['video']['filePath']
                     if CONFIG['video']['filePath'] != None:
