@@ -1,5 +1,5 @@
 # FRUIT = FIRST Robotics Uploader from an Indiana Teammate
-A python script (with GUI) for the automated processing of (long) livestream recordings into (short) match videos.
+A python script (with GUI) for the automated processing of (long) livestreams into (short) match videos.
 
 ## How it works
 1. Gets information about the matches from FIRST, includes start time and score post time
@@ -8,14 +8,6 @@ A python script (with GUI) for the automated processing of (long) livestream rec
 4. Generates a thumbnail using the match number and teams involved
 5. Uploads the videos to YouTube
 6. Notifies The Blue Alliance of the videos
-
-## Upcoming Features
-- [x] Blue Alliance Support
-- [X] Use Twitch instead of a file for input
-- [X] Load a past CONFIG to save on input time
-- [ ] Better handling of erroneous inputs
-- [ ] Update up from Python 3.12.2
-- [ ] Cool logo
 
 ## Setup for Developers; Getting FRUIT Running 
 1. Download and setup Python 3 + Virtual Environment on IDE of choice

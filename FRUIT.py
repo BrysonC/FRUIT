@@ -96,7 +96,7 @@ class MainWindow(QWidget):
         self.program = QComboBox(); self.program.addItems(["FRC", "FTC"])
         layout.addRow(QLabel("Select program:"), self.program)
         # Event (Season) Year
-        self.season_year = QComboBox(); self.season_year.addItems(["2025", "2024"])
+        self.season_year = QComboBox(); self.season_year.addItems(["2026", "2025", "2024"])
         layout.addRow(QLabel('Season Year:'), self.season_year)
         # Event Code
         self.event_code = QLineEdit(self);
@@ -220,7 +220,7 @@ class MainWindow(QWidget):
         self.twitch_button.clicked.connect(self.test_twitch)
         video_input_Twitch.addRow(self.twitch_button)
         self.streamDelay = QLineEdit("4")
-        video_input_Twitch.addRow("Stream Delay [sec]:", self.streamDelay)
+        video_input_Twitch.addRow("Stream Delay [sec] (increase if late):", self.streamDelay)
         Twitch_widget = QWidget()
         Twitch_widget.setLayout(video_input_Twitch)
         self.stacked_widget.addWidget(Twitch_widget)

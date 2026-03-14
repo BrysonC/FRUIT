@@ -163,6 +163,7 @@ def build_video_ffmpeg(user_data:dict, secStart:float, secPost:float, outputFile
     input_file = user_data['video']['filePath']
 
     # Calculate timings
+    match_start = secStart - user_data['season']['secondsBeforeStart']
     match_duration = (
         user_data['season']['secondsBeforeStart'] +
         user_data['season']['secondsOfMatch'] +
@@ -178,7 +179,7 @@ def build_video_ffmpeg(user_data:dict, secStart:float, secPost:float, outputFile
     subprocess.run([
         'ffmpeg', '-y',
         "-loglevel", "error",
-        '-ss', str(secStart),
+        '-ss', str(match_start),
         '-t', str(match_duration),
         '-i', input_file,
         '-af', f'afade=t=in:st=0:d=0.5,afade=t=out:st={match_duration - 1}:d=1',
