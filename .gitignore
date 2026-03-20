@@ -1,5 +1,6 @@
 # project-specific ignores
 input/*.mp4
+input/*.wav
 output/*
 testing/*
 log/*

@@ -133,7 +133,7 @@ class MainWindow(QWidget):
         self.video_playlist = QLineEdit("https://www.youtube.com/playlist?list=")
         layout.addRow('Playlist URL (optional):', self.video_playlist)
         # Description
-        self.video_description = QPlainTextEdit("Footage of this event is courtesy of FIRST Indiana Robotics.\n\nFollow us on Twitter (@FIRSTINRobotics), Facebook (FIRST Indiana Robotics), and Twitch (FIRSTINRobotics).\n\nFor more information and future event schedules, visit our website: https://www.firstindianarobotics.org")
+        self.video_description = QPlainTextEdit("Footage of this event is courtesy of FIRST Indiana Robotics.\n\nFollow us:\nhttps://twitch.tv/firstinrobotics\nhttps://www.facebook.com/FIRSTINRobotics/\nhttps://www.instagram.com/firstinrobotics/\nhttps://www.linkedin.com/company/first-in-robotics/\n\nEvent pictures: https://www.flickr.com/photos/indianafirst/albums/\n\nFor more information and future event schedules, visit our website: https://www.firstindianarobotics.org")
         layout.addRow('Description:', self.video_description)
         # Tags
         self.video_tags = QLineEdit('FIRST Indiana Robotics, FIN')
@@ -180,12 +180,13 @@ class MainWindow(QWidget):
         layout = QFormLayout()
         page_timings.setLayout(layout)
         layout.addRow(QLabel('<b>Define how to chop up the livestream into matches</b><br><i>Units are in seconds, decimals allowed.</i>'))
-        #2024 values: [3, 155, 5, -7.25, 16.67]
-        self.season_secondsBefore = QLineEdit(str(3+3.159)); layout.addRow('Before Match :', self.season_secondsBefore)
-        self.season_matchDuration = QLineEdit(str(15+5+135)); layout.addRow('Match Duration :', self.season_matchDuration)
-        self.season_secondsAfterEnd = QLineEdit(str(5+3)); layout.addRow('After Match :', self.season_secondsAfterEnd)
-        self.season_secondsBeforePost = QLineEdit('-8.06'); layout.addRow('Before Post :', self.season_secondsBeforePost)
-        self.season_secondsAfterPost = QLineEdit(str(25+8)); layout.addRow('After Post :', self.season_secondsAfterPost)
+        #2024 FRC values: [3, 155, 5, -7.25, 16.67]
+        #2025 FRC values: [6, 155, 8, -8.06, 33]
+        self.season_secondsBefore = QLineEdit(str(3.94)); layout.addRow('Before Match :', self.season_secondsBefore)
+        self.season_matchDuration = QLineEdit(str(20+5+140)); layout.addRow('Match Duration :', self.season_matchDuration)
+        self.season_secondsAfterEnd = QLineEdit(str(3+2)); layout.addRow('After Match :', self.season_secondsAfterEnd)
+        self.season_secondsBeforePost = QLineEdit(str(-5.8)); layout.addRow('Before Post :', self.season_secondsBeforePost)
+        self.season_secondsAfterPost = QLineEdit(str(20+5.8)); layout.addRow('After Post :', self.season_secondsAfterPost)
         layout.addRow(QLabel('<i>These should add to 179.94 to get a 3:00 video on YouTube</i>'))
         svg_widget = QSvgWidget('./images/matchTrimDiagram.svg')
         svg_widget.setFixedSize(QSize(600, 150))
@@ -206,7 +207,7 @@ class MainWindow(QWidget):
         self.dropdownBuildMethod = QComboBox()
         self.stacked_widget = QStackedWidget()
         self.dropdownInput.addItems(["Twitch Livestream", "Static File", "YouTube Livestream (experimental)"])
-        self.dropdownBuildMethod.addItems(["moviepy", "ffmpeg"])
+        self.dropdownBuildMethod.addItems(["ffmpeg", "moviepy"])
         self.dropdownInput.currentIndexChanged.connect(lambda index: self.stacked_widget.setCurrentIndex(index))
         layout.addWidget(self.dropdownInput)
         layout.addWidget(self.dropdownBuildMethod)
@@ -221,6 +222,9 @@ class MainWindow(QWidget):
         video_input_Twitch.addRow(self.twitch_button)
         self.streamDelay = QLineEdit("4")
         video_input_Twitch.addRow("Stream Delay [sec] (increase if late):", self.streamDelay)
+        self.adaptiveStreamDelayCheckbox = QCheckBox('Adaptive stream delay')
+        self.adaptiveStreamDelayCheckbox.setChecked(True)
+        video_input_Twitch.addRow(self.adaptiveStreamDelayCheckbox)
         Twitch_widget = QWidget()
         Twitch_widget.setLayout(video_input_Twitch)
         self.stacked_widget.addWidget(Twitch_widget)
@@ -624,6 +628,7 @@ class MainWindow(QWidget):
                                    'twitchUsername' : self.twitchUser.text(),
                                    'twitchUserID' : self.twitchUserID, 
                                    'streamDelay' : float(self.streamDelay.text()),
+                                   'adaptiveStreamDelay' : bool(self.adaptiveStreamDelayCheckbox.isChecked()),
                                    'filePath' : 'input/temp/twitchClip.mp4'}
             elif 'youtube' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'live_youtube', 
@@ -708,6 +713,7 @@ class MainWindow(QWidget):
                 elif CONFIG['video']['type'].startswith('live'):
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
                     if self.twitchUserID != None:
+                        self.adaptiveStreamDelayCheckbox.setChecked(CONFIG['video']['adaptiveStreamDelay'])
                         self.twitchUser.setText(CONFIG['video']['twitchUsername'])
                         self.twitchUserID = CONFIG['video']['twitchUserID']
                         self.dropdownInput.setCurrentText("Twitch Livestream")

@@ -7,3 +7,4 @@ google-api-python-client==2.123.0
 google-auth-oauthlib==1.2.2
 yt-dlp==2026.03.03
 pytz==2025.2
+scipy==1.17.1

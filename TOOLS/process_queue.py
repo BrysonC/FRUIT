@@ -1,3 +1,4 @@
+import os #file handling
 import queue #queues
 import time #waiting
 import datetime #datetime math
@@ -15,6 +16,9 @@ from TOOLS.Twitch import getLatestTwitchVODs
 from TOOLS.Twitch import durationStr2Sec
 from TOOLS.Twitch import downloadTwitchClip
 
+from TOOLS.AudioFingerprint import extract_audio_from_mp4
+from TOOLS.AudioFingerprint import find_sound_timestamp
+
 from TOOLS.FMS import getMatchesFromFMS
 from TOOLS.FMS import rewrapMatches
 
@@ -30,6 +34,10 @@ from TOOLS.TBA import postTheBlueAlliance
 # determine local timezone
 device_timezone = datetime.datetime.now().astimezone().tzinfo
 #event_timezone = datetime.timezone(datetime.timedelta(seconds=2*60*60), 'Israel Standard Time')
+
+# download buffer "constants" (prevents missing the start or end due to Twitch stream delay)
+twitch_download_pre_buffer = 2
+twitch_download_post_buffer = 8
 
 # Define the queues
 queue_build = queue.Queue()
@@ -208,6 +216,12 @@ def build_video_ffmpeg(user_data:dict, secStart:float, secPost:float, outputFile
         "-i", "input/temp/concatenate.txt",
         "-c", "copy",
         str(outputFilename)], check=True)
+    
+    # Clean temp files to prevent using old ones
+    if os.path.exists(match_file):
+        os.remove(match_file)
+    if os.path.exists(score_file):
+        os.remove(score_file)
 
 def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVODs:dict=VODs):
     """
@@ -252,33 +266,43 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
                 print('OPE! the VOD is too old for this match')
             
             # prepare VOD cut start-point
-            startSeconds = ((match['start'] - vod['created_at']).total_seconds() +user_data['video']['streamDelay'] -user_data['season']['secondsBeforeStart']) #add stream delay (time from event to server) & subtract countdown
+            streamVideoStartSec = ((match['start'] - vod['created_at']).total_seconds() +user_data['video']['streamDelay'] -user_data['season']['secondsBeforeStart']) #add stream delay (time from event to server) & subtract countdown
 
-            if startSeconds < 0:
+            if streamVideoStartSec < 0:
                 raise ValueError("Negative start time.")
 
-            """
-            Legacy code for using downloadTwitchClip_streamlink
-
-            trim = startSeconds % 10
-            if trim > 9:
-                startSegment = ((math.ceil(startSeconds)//10)-1)*10
-            else:
-                startSegment = (math.ceil(startSeconds)//10)*10
-            """
             # how many seconds into the downloaded clip the match starts
-            trim = (startSeconds - int(startSeconds)) + user_data['season']['secondsBeforeStart']
+            matchStartSec = (streamVideoStartSec - int(streamVideoStartSec)) + user_data['season']['secondsBeforeStart']
             
             # prepare score post times
-            secPost = (match['post'] - match['start']).total_seconds() + trim
+            postStartSec = (match['post'] - match['start']).total_seconds() + matchStartSec
             postEndDuration = (match['post'] - match['start']).total_seconds() + user_data['season']['secondsAfterPost']
             
             # convert clip timestamps to strings
-            startTimestampStr = str(datetime.timedelta(seconds=int(startSeconds)))
-            endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(startSeconds+postEndDuration)+11))) # add 11 seconds to ensure we get the end
+            startTimestampStr = str(datetime.timedelta(seconds=(int(streamVideoStartSec))-twitch_download_pre_buffer))
+            endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(streamVideoStartSec+postEndDuration)+twitch_download_post_buffer)))
 
             # get clip from Twitch that contains both match + its score
             downloadTwitchClip(int(vod['id']), startTimestampStr, endTimestampStr, 'input/temp/twitchClip.mp4')
+
+            # extract audio from the clip and find the exact timestamp of the match start using audio fingerprinting
+            if user_data['video']['adaptiveStreamDelay']:
+                extract_audio_from_mp4("input/temp/twitchClip.mp4")
+                start_sound_sec, start_sound_conf = find_sound_timestamp("start.wav", "input/temp/twitchClip.wav")
+                print(f"Sound found at: {start_sound_sec} seconds, with a confidence of {start_sound_conf}")
+
+                # prepare match start and post times
+                delayError = round(start_sound_sec - matchStartSec - twitch_download_pre_buffer, 5)
+                matchStartSec = start_sound_sec
+                postStartSec = (match['post'] - match['start']).total_seconds() + start_sound_sec
+
+                print(f"Stream delay of {user_data['video']['streamDelay']} was adjusted by {delayError} seconds")
+
+                # update stream delay based on audio timestamp for future matches
+                user_data['video']['streamDelay'] += delayError
+            else:
+                # how much to trim from the start of the downloaded clip to get to the video start
+                matchStartSec += twitch_download_pre_buffer
 
             try:
                 # prepare the output filename
@@ -286,9 +310,9 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
                 
                 # build the video from the downloaded clip
                 if user_data['buildMethod'] == 'moviepy':
-                    build_video_moviepy(user_data, trim, secPost, outputFilename)
+                    build_video_moviepy(user_data, matchStartSec, postStartSec, outputFilename)
                 elif user_data['buildMethod'] == 'ffmpeg':
-                    build_video_ffmpeg(user_data, trim, secPost, outputFilename)
+                    build_video_ffmpeg(user_data, matchStartSec, postStartSec, outputFilename)
                 
                 # add the match to the send queue, update count and log
                 queue_send.put(match)
