@@ -39,7 +39,7 @@ A python script (with GUI) for the automated processing of (long) livestreams in
 7. Video File: If clipping a Twitch stream, test Twitch connection. If clipping YouTube livestream, press the start recording
 YouTube livestream button. If clipping a saved video, press select file and select your video.
 8. If recording a YouTube livestream, after starting the recording, press select file, and go to TOOLS/recordings and find the mp4 file that is being recorded.
-9. . Video File: Select the match type of the first match, enter the number of the first match, and enter the timestamp of that match.
+9. Video File: Select the match type of the first match, enter the number of the first match, and enter the timestamp of that match.
 Press "Play 4 Seconds" button to test.
 10. Video File: Press "Bake Config" and then press "Make The Sauce." check the seen, built, and sent status to make sure it's running!
 11. Notes: If recording a YouTube livestream, when clipping new matches as they appear, it will not be done automatically. You must

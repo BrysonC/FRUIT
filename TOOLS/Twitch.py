@@ -141,6 +141,8 @@ def downloadTwitchClip(vod_id: int, startTimestamp: str, endTimestamp: str, outp
     # prepare command
     command = [
         "yt-dlp", "-q", # run yt-dlp in quiet mode
+        "--no-playlist", # prevents JSON metadata fetch
+        "-f", "bestvideo+bestaudio/best", # download best video and audio quality
         "https://www.twitch.tv/videos/"+str(vod_id), # Twitch VOD URL
         "--download-sections", f"*{startTimestamp}-{endTimestamp}", # timestamp sections to download
         "--force-overwrites", # overwrite existing file

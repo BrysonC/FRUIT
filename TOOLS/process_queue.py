@@ -35,9 +35,8 @@ from TOOLS.TBA import postTheBlueAlliance
 device_timezone = datetime.datetime.now().astimezone().tzinfo
 #event_timezone = datetime.timezone(datetime.timedelta(seconds=2*60*60), 'Israel Standard Time')
 
-# download buffer "constants" (prevents missing the start or end due to Twitch stream delay)
-twitch_download_pre_buffer = 2
-twitch_download_post_buffer = 8
+# download buffer "constant" (prevents missing the start or end due to Twitch stream delay)
+twitch_download_buffer = 6
 
 # Define the queues
 queue_build = queue.Queue()
@@ -279,8 +278,8 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
             postEndDuration = (match['post'] - match['start']).total_seconds() + user_data['season']['secondsAfterPost']
             
             # convert clip timestamps to strings
-            startTimestampStr = str(datetime.timedelta(seconds=(int(streamVideoStartSec))-twitch_download_pre_buffer))
-            endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(streamVideoStartSec+postEndDuration)+twitch_download_post_buffer)))
+            startTimestampStr = str(datetime.timedelta(seconds=(int(streamVideoStartSec))-twitch_download_buffer))
+            endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(streamVideoStartSec+postEndDuration)+twitch_download_buffer)))
 
             # get clip from Twitch that contains both match + its score
             downloadTwitchClip(int(vod['id']), startTimestampStr, endTimestampStr, 'input/temp/twitchClip.mp4')
@@ -288,21 +287,21 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
             # extract audio from the clip and find the exact timestamp of the match start using audio fingerprinting
             if user_data['video']['adaptiveStreamDelay']:
                 extract_audio_from_mp4("input/temp/twitchClip.mp4")
-                start_sound_sec, start_sound_conf = find_sound_timestamp("start.wav", "input/temp/twitchClip.wav")
+                start_sound_sec, start_sound_conf = find_sound_timestamp("start.wav", "input/temp/twitchClip.wav", 0, 24)
                 print(f"Sound found at: {start_sound_sec} seconds, with a confidence of {start_sound_conf}")
 
                 # prepare match start and post times
-                delayError = round(start_sound_sec - matchStartSec - twitch_download_pre_buffer, 5)
+                delayError = round(start_sound_sec - matchStartSec - twitch_download_buffer, 5)
                 matchStartSec = start_sound_sec
                 postStartSec = (match['post'] - match['start']).total_seconds() + start_sound_sec
 
-                print(f"Stream delay of {user_data['video']['streamDelay']} was adjusted by {delayError} seconds")
+                print(f"Stream delay of {user_data['video']['streamDelay']} was adjusted by {delayError/2} seconds")
 
                 # update stream delay based on audio timestamp for future matches
-                user_data['video']['streamDelay'] += delayError
+                user_data['video']['streamDelay'] += (delayError/2)
             else:
                 # how much to trim from the start of the downloaded clip to get to the video start
-                matchStartSec += twitch_download_pre_buffer
+                matchStartSec += twitch_download_buffer
 
             try:
                 # prepare the output filename

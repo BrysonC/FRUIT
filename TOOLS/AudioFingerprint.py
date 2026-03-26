@@ -71,6 +71,6 @@ def find_sound_timestamp(ref_wav, video_wav, video_crop_start_sec=0, video_crop_
     confidence = np.sqrt(best_value / (ref_energy * vid_energy))
 
     # Convert index → seconds
-    timestamp_seconds = best_index / sr_vid
+    timestamp_seconds = (best_index / sr_vid) + video_crop_start_sec
 
     return round(timestamp_seconds,5), round(confidence, 4)

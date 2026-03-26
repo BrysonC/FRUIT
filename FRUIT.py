@@ -712,12 +712,13 @@ class MainWindow(QWidget):
                     self.dropdownInput.setCurrentText("Static File")
                 elif CONFIG['video']['type'].startswith('live'):
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
-                    if self.twitchUserID != None:
+                    if CONFIG['video']['type'].endswith('twitch'):
                         self.adaptiveStreamDelayCheckbox.setChecked(CONFIG['video']['adaptiveStreamDelay'])
                         self.twitchUser.setText(CONFIG['video']['twitchUsername'])
-                        self.twitchUserID = CONFIG['video']['twitchUserID']
                         self.dropdownInput.setCurrentText("Twitch Livestream")
-                    elif self.youtubeUserID != None:
+                        if CONFIG['video']['twitchUserID'] is not None:
+                            self.twitchUserID = CONFIG['video']['twitchUserID']
+                    elif CONFIG['video']['type'].endswith('youtube'):
                         self.youtubeUser.setText(CONFIG['video']['youtubeUsername'])
                         self.youtubeUserID = CONFIG['video']['youtubeUserID']
                         self.dropdownInput.setCurrentText("YouTube Livestream (experimental)")
