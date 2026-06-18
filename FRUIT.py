@@ -2,7 +2,7 @@
 from PyQt6.QtWidgets import (QApplication, QWidget,  QFormLayout, QGridLayout, QTabWidget, QPushButton, QLineEdit, QPlainTextEdit, QLabel, QFileDialog, QComboBox, QCheckBox, QHBoxLayout, QStackedWidget, QVBoxLayout, QCompleter)
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
-from PyQt6.QtGui import QPixmap, QColor
+from PyQt6.QtGui import QPixmap, QColor, QIcon
 from PyQt6.QtCore import QSize, QUrl, QTimer
 from PyQt6.QtSvgWidgets import QSvgWidget
 
@@ -56,9 +56,10 @@ class MainWindow(QWidget):
         self.stop_event = threading.Event()
 
         '''
-        set window title, size and layout
+        set window title, icon, size and layout
         '''
         self.setWindowTitle('FRUIT by Bryce Castle')
+        self.setWindowIcon(QIcon('./images/icon_FRUIT.ico'))
         self.setGeometry(250, 250, 800, 400)
         main_layout = QGridLayout(self)
         self.setLayout(main_layout)

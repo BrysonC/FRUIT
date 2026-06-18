@@ -1,6 +1,8 @@
 # FRUIT = FIRST Robotics Uploader from an Indiana Teammate
 A python script (with GUI) for the automated processing of (long) livestreams into (short) match videos.
 
+![FRUIT Logo: a triangular apple, a circular pineapple, and a square blueberry](./images/icon_FRUIT.svg)
+
 ## How it works
 1. Gets information about the matches from FIRST, includes start time and score post time
 2. Splits the livestream recording into chucks based on those start & post times
