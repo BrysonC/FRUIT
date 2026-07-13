@@ -2,6 +2,11 @@ import google_auth_oauthlib.flow
 import googleapiclient.discovery
 import googleapiclient.errors
 import googleapiclient.http
+import subprocess
+import json
+import re
+import requests
+from datetime import datetime
 
 def authenticate_youtube(SCOPES: list=["https://www.googleapis.com/auth/youtube.upload", "https://www.googleapis.com/auth/youtube"]):
     """Authenticates a session with YouTube using oauth
@@ -96,3 +101,61 @@ def formatYouTubeTitle(matchID:str, event_title:str, year:int, replay:bool=False
         return f"{translateSymbol[matchID[0]]} {matchID[1:]}R | {year} {event_title}"
     else:
         return f"{translateSymbol[matchID[0]]} {matchID[1:]} | {year} {event_title}"
+
+def downloadYouTubeClip(url: str, startTimestamp: str, endTimestamp: str, outputFileName: str):
+    """
+    Downloads a clip of a YouTube video using yt-dlp
+        * yt-dlp does not support YouTube livestreams, as it will return a live edge (ignoring the timestamps)
+
+    Args:
+        url (str): YouTube video URL
+        startTimestamp (str): timestamp to start at (relative to start of video), H:MM:SS format
+        endTimestamp (str): timestamp to end at (relative to start of video), H:MM:SS format
+        outputFileName (str): location & name of output filepath
+
+    """
+
+    # prepare command
+    command = [
+        "yt-dlp", "-q", # run yt-dlp in quiet mode
+        "--no-playlist", # prevents JSON metadata fetch
+        "-f", "bestvideo+bestaudio/best", # download best video and audio quality
+        url, # YouTube video URL
+        "--download-sections", f"*{startTimestamp}-{endTimestamp}", # timestamp sections to download
+        "--force-overwrites", # overwrite existing file
+        "--force-keyframes-at-cuts",
+        "-o", outputFileName, # output filename
+        "--merge-output-format", "mp4",
+        "--retries", "5", # retry 5 times on failure
+        "--retry-sleep", "2", # wait 2 seconds between retries
+    ]
+
+    print(f"Downloading YouTube video {url} clip from {startTimestamp} to {endTimestamp}.")
+    
+    # run command in terminal
+    subprocess.run(command, check=True)
+
+def getYoutubeTimestamps(url):
+    """
+    Extract the upload timestamp and duration of a YouTube video from its URL.
+
+    Args:
+        url (str): The URL of the YouTube video.
+    
+    Returns:
+        datetime: The upload timestamp as a timezone-aware datetime object.
+        int: The duration of the video in seconds.
+    """
+    # Fetch page HTML
+    html = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}).text
+
+    # Extract the ytInitialPlayerResponse JSON blob
+    data = json.loads( re.search(r"ytInitialPlayerResponse\s*=\s*({.*?});", html).group(1))
+
+    # Get information from the JSON data
+    duration_seconds = int(data.get("videoDetails", {}).get("lengthSeconds"))
+    micro = (data.get("microformat", {}).get("playerMicroformatRenderer", {}))
+
+    date = datetime.fromisoformat(micro["uploadDate"].replace("Z", "+00:00"))
+
+    return date, duration_seconds

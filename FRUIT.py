@@ -13,16 +13,21 @@ import os           # file IO
 import json         # CONFIG handling
 
 # my functions, see python scripts in TOOLS
-from TOOLS.CredentialsPopUp import CredDialog
 from TOOLS.FMS import getMatchesFromFMS
 from TOOLS.FMS import rewrapMatches
 from TOOLS.FMS import getEventInfoFromFMS
 from TOOLS.timezones import convert_windows_to_iana
 from TOOLS.YouTube import authenticate_youtube
+from TOOLS.YouTube import downloadYouTubeClip
 from TOOLS.thumbnails import generateThumbnail
 from TOOLS.TBA import postTheBlueAlliance
 from TOOLS.Twitch import covertID2Username
 from TOOLS.YoutubeLivestream import getChannelIDFromHandle
+
+# my pop-ups and other custom widgets
+from TOOLS.QT_MatchForm import MatchModel
+from TOOLS.QT_MatchForm import MatchForm
+from TOOLS.CredentialsPopUp import CredDialog
 
 # processes to run on queued threads
 import threading
@@ -30,6 +35,7 @@ from TOOLS.process_queue import watch
 from TOOLS.process_queue import process_queue_seek
 from TOOLS.process_queue import process_queue_build_live
 from TOOLS.process_queue import process_queue_build_static
+from TOOLS.process_queue import process_queue_build_youtube
 from TOOLS.process_queue import process_queue_send
 from TOOLS.ffmpegrecord import start_recording
 from TOOLS.ffmpegrecord import stop_recording
@@ -53,6 +59,7 @@ class MainWindow(QWidget):
         self.twitchUserID = None
         self.youtubeUserID = None
         self.YouTube = None
+        self.matchModel = MatchModel()
         self.stop_event = threading.Event()
 
         '''
@@ -75,7 +82,7 @@ class MainWindow(QWidget):
         page_welcome = QWidget(self)
         layout = QFormLayout()
         page_welcome.setLayout(layout)
-        layout.addRow(QLabel("<h1>FIRST Robotics Uploader from an Indiana Teammate</h1>\n<i>Make each tab green then you're ready to proceed.</i>"))
+        layout.addRow(QLabel("<h1>FIRST Robotics Uploader from an Indiana Teammate</h1>\n<i>Make each tab green then you're ready to proceed (yellow tabs optional).</i>"))
         layout.addRow(QLabel(bodyText))
         # set/check credentials via dialog pop-up window
         self.credentialsButton = QPushButton("Set/Check Credentials", self)
@@ -115,7 +122,6 @@ class MainWindow(QWidget):
         completerTimezone = QCompleter(pytz.all_timezones); self.event_timezone.setCompleter(completerTimezone)
         layout.addRow(QLabel('Event Timezone:'), self.event_timezone)
         
-
         '''
         YOUTUBE PAGE
          - YouTube Authentication
@@ -207,7 +213,7 @@ class MainWindow(QWidget):
         self.dropdownInput = QComboBox()
         self.dropdownBuildMethod = QComboBox()
         self.stacked_widget = QStackedWidget()
-        self.dropdownInput.addItems(["Twitch Livestream", "Static File", "YouTube Livestream (experimental)"])
+        self.dropdownInput.addItems(["Twitch", "Local - Static File", "YouTube - Livestream (experimental)", "YouTube - Video (experimental)"])
         self.dropdownBuildMethod.addItems(["ffmpeg", "moviepy"])
         self.dropdownInput.currentIndexChanged.connect(lambda index: self.stacked_widget.setCurrentIndex(index))
         layout.addWidget(self.dropdownInput)
@@ -230,22 +236,20 @@ class MainWindow(QWidget):
         Twitch_widget.setLayout(video_input_Twitch)
         self.stacked_widget.addWidget(Twitch_widget)
 
-        # Video Input 2: Static File
+        # Video Input 2: Static Local File
         video_input_File = QFormLayout()
         self.mp4_VOD = QPushButton("Select File")
         self.mp4_VOD.clicked.connect(self.getFileVideo)
         video_input_File.addRow('Video File:', self.mp4_VOD)
         # reference match details
-        self.match_type = QComboBox(); self.match_type.addItems(["Q = Quals", "P = Playoffs", "F = Finals"])
-        video_input_File.addRow('First Match Type:', self.match_type)
-        self.match_number_ref = QLineEdit(); video_input_File.addRow('First Match Number:', self.match_number_ref)
-        self.timestamp_input = QLineEdit(); video_input_File.addRow('Enter timestamp (mm:ss):', self.timestamp_input)
+        self.matchFormLocal = MatchForm(self.matchModel)
+        video_input_File.addRow(self.matchFormLocal)
         # Create a video widget and add it to the layout
         self.video_widget = QVideoWidget()
         self.video_widget.setMinimumSize(480, 270)
         self.play_button = QPushButton("Play 4 Seconds")
         self.play_button.setStyleSheet('color: red')
-        self.play_button.clicked.connect(self.play_video)
+        self.play_button.clicked.connect(lambda: self.play_video(self.media_player, self.videoFilepath, self.matchModel.timestamp()))
         video_input_File.addRow(self.play_button, self.video_widget)
         self.media_player = QMediaPlayer()
         self.audio_output = QAudioOutput()
@@ -256,27 +260,48 @@ class MainWindow(QWidget):
         self.stacked_widget.addWidget(file_widget)
 
         # Video Input 3: YouTube Livestream
-        video_input_YouTube = QFormLayout()
-        self.youtubeUser = QLineEdit("FIRSTINRobotics"); video_input_YouTube.addRow("Youtube Username:", self.youtubeUser)
+        video_input_YouTube_Live = QFormLayout()
+        self.youtubeUser = QLineEdit("FIRSTINRobotics"); video_input_YouTube_Live.addRow("Youtube Username:", self.youtubeUser)
         # gets channel ID from username
         self.youtube_button = QPushButton("Test YouTube Livestream Connection")
-        video_input_YouTube.addRow(self.youtube_button)
+        video_input_YouTube_Live.addRow(self.youtube_button)
         self.youtube_button.setStyleSheet("color: red")
         self.youtube_button.clicked.connect(self.get_yt_channel_ID)
         self.record_button = QPushButton(
             "Start Recording YouTube Livestream! (Polls every ten seconds to see if channel is live)"
         )
-        video_input_YouTube.addRow(self.record_button)
+        video_input_YouTube_Live.addRow(self.record_button)
         self.record_button.setStyleSheet("color: red")
         self.record_button.clicked.connect(lambda: start_recording(self.youtubeUserID))
         self.record_button.clicked.connect(self.recording_button)
         self.stop_button = QPushButton("Stop Recording YouTube Livestream.")
-        video_input_YouTube.addRow(self.stop_button)
+        video_input_YouTube_Live.addRow(self.stop_button)
         self.stop_button.setStyleSheet("color: red")
         self.stop_button.clicked.connect(stop_recording)
         YouTube_widget = QWidget()
-        YouTube_widget.setLayout(video_input_YouTube)
+        YouTube_widget.setLayout(video_input_YouTube_Live)
         self.stacked_widget.addWidget(YouTube_widget)
+
+        # Video Input 4: YouTube Video (Recording)
+        video_input_YouTube_static = QFormLayout()
+        video_input_YouTube_static.addRow(QLabel("⚠️ WARNING: this method's resolution is limited to 360p"))
+        self.youtubeURL = QLineEdit("https://www.youtube.com/watch?v="); video_input_YouTube_static.addRow("YouTube URL:", self.youtubeURL)
+        self.matchFormYouTube = MatchForm(self.matchModel)
+        video_input_YouTube_static.addRow(self.matchFormYouTube)
+        YouTube_static_widget = QWidget()
+        YouTube_static_widget.setLayout(video_input_YouTube_static)
+        self.stacked_widget.addWidget(YouTube_static_widget)
+        # Create a video widget and add it to the layout
+        self.video_clip_widget = QVideoWidget()
+        self.video_clip_widget.setMinimumSize(480, 270)
+        self.clip_button = QPushButton("Clip 4 Seconds")
+        self.clip_button.setStyleSheet('color: red')
+        self.clip_button.clicked.connect(self.clip_video)
+        video_input_YouTube_static.addRow(self.clip_button, self.video_clip_widget)
+        self.media_clip_player = QMediaPlayer()
+        self.audio_clip_output = QAudioOutput()
+        self.media_clip_player.setAudioOutput(self.audio_clip_output)
+        self.media_clip_player.setVideoOutput(self.video_clip_widget)
 
         '''
         TBA PAGE
@@ -309,11 +334,11 @@ class MainWindow(QWidget):
         self.tab.addTab(page_TBA, 'The Blue Alliance')
         # set tab colors
         self.tab.tabBar().setTabTextColor(1, QColor('red'))
-        self.tab.tabBar().setTabTextColor(2, QColor('red'))
+        self.tab.tabBar().setTabTextColor(2, QColor('yellow'))
         self.tab.tabBar().setTabTextColor(3, QColor('red'))
         self.tab.tabBar().setTabTextColor(4, QColor('green'))
         self.tab.tabBar().setTabTextColor(5, QColor('red'))
-        self.tab.tabBar().setTabTextColor(6, QColor('red'))
+        self.tab.tabBar().setTabTextColor(6, QColor('yellow'))
         main_layout.addWidget(self.tab)
 
         '''
@@ -362,10 +387,9 @@ class MainWindow(QWidget):
         with open('log/send.txt', 'r') as source_file, open('log/seek.txt', 'w') as destination_file:
             # Read the contents of the source file and write them to the destination file
             destination_file.write(source_file.read())
-        
-        with open('log/send.txt', 'r') as file:
+
             # Count finished matches
-            count_finished = len([line for line in file if self.CONFIG['event']['code'] in line])
+            count_finished = len([line for line in source_file if self.CONFIG['event']['code'] in line])
 
         self.status_seen.setText(f" SEEN: {count_finished}")
         self.status_built.setText(f"BUILT: {count_finished}")
@@ -377,14 +401,16 @@ class MainWindow(QWidget):
 
         # Create threads for each queue
         self.thread_seek = threading.Thread(target=process_queue_seek, args=(self.CONFIG, self.stop_event, self.status_seen, CREDENTIALS))
-        if self.CONFIG['video']['type'].startswith('live'):
+        if self.CONFIG['video']['type'] in ['twitch', 'youtube_live']:
             self.thread_build = threading.Thread(target=process_queue_build_live, args=(self.CONFIG, self.stop_event, self.status_built))
         elif self.CONFIG['video']['type'] == 'static':
             self.thread_build = threading.Thread(target=process_queue_build_static, args=(self.CONFIG, self.stop_event, self.status_built, self.matches))
+        elif self.CONFIG['video']['type'] == 'youtube_video':
+            self.thread_build = threading.Thread(target=process_queue_build_youtube, args=(self.CONFIG, self.stop_event, self.status_built, self.matches))
         self.thread_send = threading.Thread(target=process_queue_send, args=(self.CONFIG, self.stop_event, self.status_sent, self.YouTube))
 
         # Start the threads
-        if self.CONFIG['video']['type'].startswith('live'):
+        if self.CONFIG['video']['type'] == 'twitch':
             watch(self.CONFIG['video']['twitchUserID'], self.stop_event, CREDENTIALS)
         self.thread_seek.start()
         self.thread_build.start()
@@ -394,20 +420,42 @@ class MainWindow(QWidget):
         self.startThreadButton.setText(f"{result} matches processed!")
         self.startThreadButton.setEnabled(True)
     
-    def play_video(self):
-        # Get the timestamp from the input field and convert it to milliseconds
-        timestamp = self.timestamp_input.text()
-        self.match_timeMin, self.match_timeSec = map(float, timestamp.split(':'))
-        position = int((self.match_timeMin * 60 + self.match_timeSec) * 1000)
-        self.media_player.setPosition(position)
-        self.media_player.play()
+    def play_video(self, player, source:str, timestamp:str, duration:float=4.0):
+        """
+        Play a video from a given source (file path) starting from a specific timestamp for a specified duration.
 
-        # Pause the video after 4 seconds
-        QTimer.singleShot(4000, self.media_player.pause)
+        Args:
+            source (str): The file path of the video to be played.
+            timestamp (str): The timestamp in the format "mm:ss" or "mm:ss.xxx" from which to start playing the video.
+            duration (float): The duration in seconds for which the video should be played. Default is 4.0 seconds.
+        """
+
+        # Get the timestamp from the input field and convert it to milliseconds
+        playMin, playSec = map(float, timestamp.split(':'))
+        playMs = int((playMin * 60 + playSec) * 1000)
+        def whenMediaReady(status):
+            if status == QMediaPlayer.MediaStatus.LoadedMedia:
+                player.setPosition(playMs)
+                player.play()
+                # Disconnect source after playing
+                player.mediaStatusChanged.disconnect(whenMediaReady)
+        
+        # Play video when it is ready
+        player.mediaStatusChanged.connect(whenMediaReady)
+
+        # Set video source (and play)
+        player.setSource(QUrl.fromLocalFile(source))
+
+        def pause_and_release():
+            player.pause()
+            player.setSource(QUrl())   # release file
+
+        # Pause the video after the specified duration
+        QTimer.singleShot(int(duration * 1000), pause_and_release)
         self.tab.tabBar().setTabTextColor(5, QColor('green'))
         self.play_button.setStyleSheet('color: green')
     
-    def getFileVideo(self, button):
+    def getFileVideo(self):
         response = QFileDialog.getOpenFileName(
             parent=self,
             caption='Select a file',
@@ -418,7 +466,18 @@ class MainWindow(QWidget):
         self.videoFilepath = response[0]
         
         self.mp4_VOD.setText('📁'+response[0].split('/')[-1])
-        self.media_player.setSource(QUrl.fromLocalFile(response[0]))
+    
+    def clip_video(self):
+        self.clip_button.setText('Downloading...')
+        self.clip_button.setStyleSheet('color: teal'); self.clip_button.repaint();
+        timestamp = self.matchModel.timestamp()
+        self.match_timeMin, self.match_timeSec = map(float, timestamp.split(':'))
+        timestamp_start = str(int(self.match_timeMin))+":"+str(int(self.match_timeSec))
+        timestamp_end = str(int(self.match_timeMin))+":"+str(int(self.match_timeSec)+5) # 5 seconds of clip
+        downloadYouTubeClip(self.youtubeURL.text(), timestamp_start, timestamp_end, 'input/temp/clip.mp4')
+        self.clip_button.setText('Clip 4 Seconds')
+        self.clip_button.setStyleSheet('color: green'); self.clip_button.repaint();
+        self.play_video(self.media_clip_player, 'input/temp/clip.mp4', "00:"+ str(self.match_timeSec-int(self.match_timeSec)), duration=4.0)
     
     def getFileSponsorImage(self, button):
         response = QFileDialog.getOpenFileName(
@@ -625,23 +684,29 @@ class MainWindow(QWidget):
             CONFIG['buildMethod'] = self.dropdownBuildMethod.currentText()
 
             if 'twitch' in self.dropdownInput.currentText().lower():
-                CONFIG['video'] = {'type': 'live_twitch', 
+                CONFIG['video'] = {'type': 'twitch',
                                    'twitchUsername' : self.twitchUser.text(),
                                    'twitchUserID' : self.twitchUserID, 
                                    'streamDelay' : float(self.streamDelay.text()),
                                    'adaptiveStreamDelay' : bool(self.adaptiveStreamDelayCheckbox.isChecked()),
                                    'filePath' : 'input/temp/twitchClip.mp4'}
             elif 'youtube' in self.dropdownInput.currentText().lower():
-                CONFIG['video'] = {'type': 'live_youtube', 
-                                   'youtubeUsername' : self.youtubeUser.text(),
-                                   'youtubeUserID' : self.youtubeUserID, 
-                                   'streamDelay' : float(self.streamDelay.text()),
-                                   'filePath' : 'input/temp/youtubeClip.mp4',
-                                   'recordingStartTime': 'TODO: add start time feature'}
+                if 'livestream' in self.dropdownInput.currentText().lower():
+                    CONFIG['video'] = {'type': 'youtube_live',
+                                       'youtubeUsername' : self.youtubeUser.text(),
+                                       'youtubeUserID' : self.youtubeUserID, 
+                                       'streamDelay' : float(self.streamDelay.text()),
+                                       'filePath' : 'input/temp/youtubeClip.mp4',
+                                       'recordingStartTime': 'TODO: add start time feature'}
+                elif 'video' in self.dropdownInput.currentText().lower():
+                    CONFIG['video'] = {'type': 'youtube_video',
+                                       'URL' : self.youtubeURL.text(),
+                                       'matchID' : self.matchModel.matchType() + str(self.matchModel.matchNumber()),
+                                       'matchTime' : (self.match_timeMin, self.match_timeSec)}
             elif 'static' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'static',
                                    'filePath' : self.videoFilepath,
-                                   'matchID' : self.match_type.currentText()[0] + self.match_number_ref.text(),
+                                   'matchID' : self.matchModel.matchType() + str(self.matchModel.matchNumber()),
                                    'matchTime' : (self.match_timeMin, self.match_timeSec)}
             
             self.CONFIG = CONFIG
@@ -705,24 +770,28 @@ class MainWindow(QWidget):
                     if CONFIG['video']['filePath'] != None:
                         self.mp4_VOD.setText('📁'+CONFIG['video']['filePath'].split('/')[-1])
                         self.media_player.setSource(QUrl.fromLocalFile(CONFIG['video']['filePath']))
-                    self.match_type.setCurrentText({'Q':"Q = Quals", 'P':"P = Playoffs", 'F':"F = Finals"}[CONFIG['video']['matchID'][0]])
-                    self.match_number_ref.setText(CONFIG['video']['matchID'][1:])
-                    self.match_timeMin = CONFIG['video']['matchTime'][0]
-                    self.match_timeSec = CONFIG['video']['matchTime'][1]
-                    self.timestamp_input.setText(str(self.match_timeMin)+':'+str(self.match_timeSec))
-                    self.dropdownInput.setCurrentText("Static File")
-                elif CONFIG['video']['type'].startswith('live'):
+                    self.matchModel.setMatchType({'Q':"Q = Quals", 'P':"P = Playoffs", 'F':"F = Finals"}[CONFIG['video']['matchID'][0]])
+                    self.matchModel.setMatchNumber(CONFIG['video']['matchID'][1:])
+                    self.matchModel.setTimestamp(f'{int(CONFIG["video"]["matchTime"][0])}:{CONFIG["video"]["matchTime"][1]}')
+                    self.dropdownInput.setCurrentText("Local - Static File")
+                elif CONFIG['video']['type'] == 'twitch':
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
-                    if CONFIG['video']['type'].endswith('twitch'):
-                        self.adaptiveStreamDelayCheckbox.setChecked(CONFIG['video']['adaptiveStreamDelay'])
-                        self.twitchUser.setText(CONFIG['video']['twitchUsername'])
-                        self.dropdownInput.setCurrentText("Twitch Livestream")
-                        if CONFIG['video']['twitchUserID'] is not None:
-                            self.twitchUserID = CONFIG['video']['twitchUserID']
-                    elif CONFIG['video']['type'].endswith('youtube'):
-                        self.youtubeUser.setText(CONFIG['video']['youtubeUsername'])
-                        self.youtubeUserID = CONFIG['video']['youtubeUserID']
-                        self.dropdownInput.setCurrentText("YouTube Livestream (experimental)")
+                    self.adaptiveStreamDelayCheckbox.setChecked(CONFIG['video']['adaptiveStreamDelay'])
+                    self.twitchUser.setText(CONFIG['video']['twitchUsername'])
+                    self.dropdownInput.setCurrentText("Twitch")
+                    if CONFIG['video']['twitchUserID'] is not None:
+                        self.twitchUserID = CONFIG['video']['twitchUserID']
+                elif CONFIG['video']['type'] == 'youtube_live':
+                    self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
+                    self.youtubeUser.setText(CONFIG['video']['youtubeUsername'])
+                    self.youtubeUserID = CONFIG['video']['youtubeUserID']
+                    self.dropdownInput.setCurrentText("YouTube - Livestream (experimental)")
+                elif CONFIG['video']['type'] == 'youtube_video':
+                    self.youtubeURL.setText(CONFIG['video']['URL'])
+                    self.matchModel.setMatchType({'Q':"Q = Quals", 'P':"P = Playoffs", 'F':"F = Finals"}[CONFIG['video']['matchID'][0]])
+                    self.matchModel.setMatchNumber(CONFIG['video']['matchID'][1:])
+                    self.matchModel.setTimestamp(f'{int(CONFIG["video"]["matchTime"][0])}:{CONFIG["video"]["matchTime"][1]}')
+                    self.dropdownInput.setCurrentText("YouTube - Video (experimental)")
         else:
             print('No CONFIG selected!')
 

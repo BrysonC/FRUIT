@@ -16,6 +16,9 @@ from TOOLS.Twitch import getLatestTwitchVODs
 from TOOLS.Twitch import durationStr2Sec
 from TOOLS.Twitch import downloadTwitchClip
 
+from TOOLS.YouTube import getYoutubeTimestamps
+from TOOLS.YouTube import downloadYouTubeClip
+
 from TOOLS.AudioFingerprint import extract_audio_from_mp4
 from TOOLS.AudioFingerprint import find_sound_timestamp
 
@@ -35,8 +38,8 @@ from TOOLS.TBA import postTheBlueAlliance
 device_timezone = datetime.datetime.now().astimezone().tzinfo
 #event_timezone = datetime.timezone(datetime.timedelta(seconds=2*60*60), 'Israel Standard Time')
 
-# download buffer "constant" (prevents missing the start or end due to Twitch stream delay)
-twitch_download_buffer = 6
+# download buffer "constant" (prevents missing the start or end due to livestream delay)
+download_buffer = 6
 
 # Define the queues
 queue_build = queue.Queue()
@@ -278,8 +281,8 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
             postEndDuration = (match['post'] - match['start']).total_seconds() + user_data['season']['secondsAfterPost']
             
             # convert clip timestamps to strings
-            startTimestampStr = str(datetime.timedelta(seconds=(int(streamVideoStartSec))-twitch_download_buffer))
-            endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(streamVideoStartSec+postEndDuration)+twitch_download_buffer)))
+            startTimestampStr = str(datetime.timedelta(seconds=(int(streamVideoStartSec))-download_buffer))
+            endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(streamVideoStartSec+postEndDuration)+download_buffer)))
 
             # get clip from Twitch that contains both match + its score
             downloadTwitchClip(int(vod['id']), startTimestampStr, endTimestampStr, 'input/temp/twitchClip.mp4')
@@ -291,7 +294,7 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
                 print(f"Sound found at: {start_sound_sec} seconds, with a confidence of {start_sound_conf}")
 
                 # prepare match start and post times
-                delayError = round(start_sound_sec - matchStartSec - twitch_download_buffer, 5)
+                delayError = round(start_sound_sec - matchStartSec - download_buffer, 5)
                 matchStartSec = start_sound_sec
                 postStartSec = (match['post'] - match['start']).total_seconds() + start_sound_sec
 
@@ -301,7 +304,7 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
                 user_data['video']['streamDelay'] += (delayError/2)
             else:
                 # how much to trim from the start of the downloaded clip to get to the video start
-                matchStartSec += twitch_download_buffer
+                matchStartSec += download_buffer
 
             try:
                 # prepare the output filename
@@ -327,7 +330,7 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
         except ValueError:
             print('negative start time, do not retry match')
 
-def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matches, latestVODs:dict=VODs):
+def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matches):
     """
     Creates match video using local file
 
@@ -336,7 +339,6 @@ def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matche
         stop_event: (bool) or threading.Event(), used to stop processing
         QLabelCounter: PYQT QLabel() to update respective counter (by 1) in GUI
         matches (list): list of matches from FMS
-        latestVODs (dict): details of VODs found
 
     """
 
@@ -350,7 +352,7 @@ def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matche
         try:
             match = queue_build.get(timeout=30)
 
-            segmentStartDatetime = match['start']-datetime.timedelta(seconds=user_data['season']['secondsBeforePost'])
+            segmentStartDatetime = match['start']-datetime.timedelta(seconds=user_data['season']['secondsBeforeStart'])
             segmentEndDatetime = match['post']+datetime.timedelta(seconds=user_data['season']['secondsAfterPost'])
 
             if (segmentStartDatetime >= fileTimeStart)*(segmentEndDatetime < fileTimeEnd):
@@ -360,6 +362,67 @@ def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matche
 
                 # prepare the output filename
                 outputFilename = 'output/'+match2str(match, user_data['event']['code'])+'.mp4'
+
+                # build the video from the downloaded clip
+                if user_data['buildMethod'] == 'moviepy':
+                    build_video_moviepy(user_data, secStart, secPost, outputFilename)
+                elif user_data['buildMethod'] == 'ffmpeg':
+                    build_video_ffmpeg(user_data, secStart, secPost, outputFilename)
+                
+                # add the match to the send queue, update count and log
+                queue_send.put(match)
+                incrementCountText(QLabelCounter)
+                print("BUILT: "+match2str(match, user_data['event']['code']))
+            else:
+                print("NOT IN VIDEO: "+match2str(match, user_data['event']['code']))
+        
+        except queue.Empty:
+            continue
+
+def process_queue_build_youtube(user_data:dict, stop_event, QLabelCounter, matches):
+    """
+    Creates match video from a video/livestream on YouTube
+
+    Args:
+        user_data (dict): user inputs from FRUIT GUI
+        stop_event: (bool) or threading.Event(), used to stop processing
+        QLabelCounter: PYQT QLabel() to update respective counter (by 1) in GUI
+        matches (list): list of matches from FMS
+
+    """
+
+    videoDate, fileDuration = getYoutubeTimestamps(user_data['video']['URL'])
+
+    fileMatchStart = [match for match in matches if match["id"] == user_data['video']['matchID']][0]['start']
+    fileSecStart = (user_data['video']['matchTime'][0]*60)+user_data['video']['matchTime'][1]
+    fileTimeStart = fileMatchStart-datetime.timedelta(seconds=fileSecStart)
+    fileTimeEnd = fileMatchStart+datetime.timedelta(seconds=fileDuration-fileSecStart)
+
+    user_data['video']['filePath'] = 'input/temp/youtubeClip.mp4'
+
+    while not stop_event.is_set():
+        try:
+            match = queue_build.get(timeout=30)
+
+            segmentStartDatetime = match['start']-datetime.timedelta(seconds=user_data['season']['secondsBeforeStart'])
+            segmentEndDatetime = match['post']+datetime.timedelta(seconds=user_data['season']['secondsAfterPost'])
+
+            if (segmentStartDatetime >= fileTimeStart)*(segmentEndDatetime < fileTimeEnd):
+                # determine video timestamps of notable events
+                secStart = (segmentStartDatetime - fileMatchStart).total_seconds() + fileSecStart 
+                secPost = (segmentEndDatetime - fileMatchStart).total_seconds() + fileSecStart
+
+                # prepare the output filename
+                outputFilename = 'output/'+match2str(match, user_data['event']['code'])+'.mp4'
+
+                # download the clip from YouTube
+                startTimestampStr = str(datetime.timedelta(seconds=(int(secStart))-download_buffer))
+                endTimestampStr = str(datetime.timedelta(seconds=(math.ceil(secPost))+download_buffer))
+                downloadYouTubeClip(user_data['video']['URL'], startTimestampStr, endTimestampStr, user_data['video']['filePath'])
+                
+                # timing adjustments for the downloaded clip
+                secStart = secStart - int(secStart) + download_buffer
+                secPost = (match['post'] - match['start']).total_seconds() + secStart
 
                 # build the video from the downloaded clip
                 if user_data['buildMethod'] == 'moviepy':
