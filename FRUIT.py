@@ -35,7 +35,6 @@ from TOOLS.process_queue import watch
 from TOOLS.process_queue import process_queue_seek
 from TOOLS.process_queue import process_queue_build_live
 from TOOLS.process_queue import process_queue_build_static
-from TOOLS.process_queue import process_queue_build_youtube
 from TOOLS.process_queue import process_queue_send
 from TOOLS.ffmpegrecord import start_recording
 from TOOLS.ffmpegrecord import stop_recording
@@ -216,8 +215,11 @@ class MainWindow(QWidget):
         self.dropdownInput.addItems(["Twitch", "Local - Static File", "YouTube - Livestream (experimental)", "YouTube - Video (experimental)"])
         self.dropdownBuildMethod.addItems(["ffmpeg", "moviepy"])
         self.dropdownInput.currentIndexChanged.connect(lambda index: self.stacked_widget.setCurrentIndex(index))
+        self.adaptiveSyncCheckbox = QCheckBox('Adaptive audio timestamp sync')
+        self.adaptiveSyncCheckbox.setChecked(True)
         layout.addWidget(self.dropdownInput)
         layout.addWidget(self.dropdownBuildMethod)
+        layout.addWidget(self.adaptiveSyncCheckbox)
         layout.addWidget(self.stacked_widget)
 
         # Video Input 1: Twitch Livestream
@@ -229,9 +231,7 @@ class MainWindow(QWidget):
         video_input_Twitch.addRow(self.twitch_button)
         self.streamDelay = QLineEdit("4")
         video_input_Twitch.addRow("Stream Delay [sec] (increase if late):", self.streamDelay)
-        self.adaptiveStreamDelayCheckbox = QCheckBox('Adaptive stream delay')
-        self.adaptiveStreamDelayCheckbox.setChecked(True)
-        video_input_Twitch.addRow(self.adaptiveStreamDelayCheckbox)
+
         Twitch_widget = QWidget()
         Twitch_widget.setLayout(video_input_Twitch)
         self.stacked_widget.addWidget(Twitch_widget)
@@ -356,6 +356,7 @@ class MainWindow(QWidget):
 
         self.startThreadButton = QPushButton('Make The Sauce')
         self.startThreadButton.clicked.connect(self.start_sauce_thread)
+        self.startThreadButton.setEnabled(False) # Disabled by default until CONFIG is baked
         main_layout.addWidget(self.startThreadButton)
 
         '''
@@ -384,12 +385,13 @@ class MainWindow(QWidget):
         self.stop_event.clear()
 
         # Clear and entries in send log file that were not finished
-        with open('log/send.txt', 'r') as source_file, open('log/seek.txt', 'w') as destination_file:
-            # Read the contents of the source file and write them to the destination file
-            destination_file.write(source_file.read())
-
-            # Count finished matches
-            count_finished = len([line for line in source_file if self.CONFIG['event']['code'] in line])
+        with open('log/send.txt', 'r') as source_file:
+            data = source_file.readlines()
+        with open('log/seek.txt', 'w') as destination_file:
+            destination_file.writelines(data)
+        
+        # Count finished matches
+        count_finished = sum(1 for line in data if line.startswith(self.CONFIG['event']['code'].upper()))
 
         self.status_seen.setText(f" SEEN: {count_finished}")
         self.status_built.setText(f"BUILT: {count_finished}")
@@ -403,10 +405,8 @@ class MainWindow(QWidget):
         self.thread_seek = threading.Thread(target=process_queue_seek, args=(self.CONFIG, self.stop_event, self.status_seen, CREDENTIALS))
         if self.CONFIG['video']['type'] in ['twitch', 'youtube_live']:
             self.thread_build = threading.Thread(target=process_queue_build_live, args=(self.CONFIG, self.stop_event, self.status_built))
-        elif self.CONFIG['video']['type'] == 'static':
+        elif self.CONFIG['video']['type'] in ['static', 'youtube_video']:
             self.thread_build = threading.Thread(target=process_queue_build_static, args=(self.CONFIG, self.stop_event, self.status_built, self.matches))
-        elif self.CONFIG['video']['type'] == 'youtube_video':
-            self.thread_build = threading.Thread(target=process_queue_build_youtube, args=(self.CONFIG, self.stop_event, self.status_built, self.matches))
         self.thread_send = threading.Thread(target=process_queue_send, args=(self.CONFIG, self.stop_event, self.status_sent, self.YouTube))
 
         # Start the threads
@@ -506,8 +506,9 @@ class MainWindow(QWidget):
             elif self.program.currentText() == 'FTC':
                 matchesRaw = getMatchesFromFMS(year, eventCode, self.program.currentText(), CREDENTIALS['FTC_username'], CREDENTIALS['FTC_key'])
                 eventInfo = getEventInfoFromFMS(year, eventCode, self.program.currentText(), CREDENTIALS['FTC_username'], CREDENTIALS['FTC_key'])
+                eventInfo['timezone'] = convert_windows_to_iana(eventInfo['timezone'])
             
-            self.matches = rewrapMatches(matchesRaw, self.program.currentText())
+            self.matches = rewrapMatches(matchesRaw, self.program.currentText(), eventInfo['timezone'])
             
             # Report success of FMS pull
             if len(self.matches) != 0:
@@ -688,7 +689,6 @@ class MainWindow(QWidget):
                                    'twitchUsername' : self.twitchUser.text(),
                                    'twitchUserID' : self.twitchUserID, 
                                    'streamDelay' : float(self.streamDelay.text()),
-                                   'adaptiveStreamDelay' : bool(self.adaptiveStreamDelayCheckbox.isChecked()),
                                    'filePath' : 'input/temp/twitchClip.mp4'}
             elif 'youtube' in self.dropdownInput.currentText().lower():
                 if 'livestream' in self.dropdownInput.currentText().lower():
@@ -707,9 +707,13 @@ class MainWindow(QWidget):
                 CONFIG['video'] = {'type': 'static',
                                    'filePath' : self.videoFilepath,
                                    'matchID' : self.matchModel.matchType() + str(self.matchModel.matchNumber()),
-                                   'matchTime' : (self.match_timeMin, self.match_timeSec)}
+                                   'matchTime' : tuple(map(float, self.matchModel.timestamp().split(':')))}
+            
+            CONFIG['video']['adaptiveSyncDelay'] = bool(self.adaptiveSyncCheckbox.isChecked())
             
             self.CONFIG = CONFIG
+
+            self.startThreadButton.setEnabled(True)
 
             with open("CONFIG", "w") as file:
                 json.dump(CONFIG, file, indent=2)
@@ -764,6 +768,7 @@ class MainWindow(QWidget):
                 self.TBA_eventCode.setText(CONFIG['TBA']['eventKey'])
 
                 self.dropdownBuildMethod.setCurrentText(CONFIG['buildMethod'])
+                self.adaptiveSyncCheckbox.setChecked(CONFIG['video']['adaptiveSyncDelay'])
                 
                 if CONFIG['video']['type'] == 'static':
                     self.videoFilepath = CONFIG['video']['filePath']
@@ -776,7 +781,6 @@ class MainWindow(QWidget):
                     self.dropdownInput.setCurrentText("Local - Static File")
                 elif CONFIG['video']['type'] == 'twitch':
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
-                    self.adaptiveStreamDelayCheckbox.setChecked(CONFIG['video']['adaptiveStreamDelay'])
                     self.twitchUser.setText(CONFIG['video']['twitchUsername'])
                     self.dropdownInput.setCurrentText("Twitch")
                     if CONFIG['video']['twitchUserID'] is not None:

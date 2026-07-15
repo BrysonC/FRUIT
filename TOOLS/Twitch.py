@@ -90,7 +90,44 @@ def getLatestTwitchVODs(client_id:str, client_secret:str, user_id:str):
     vods_response = requests.get(vods_url, headers=headersTwitchAPI)
     vods_data = vods_response.json()['data']
 
+    # covert information into more useable form
+    for vod in vods_data:
+        vod['duration'] = durationStr2Sec(vod['duration'])
+        vod['created_at'] = datetime.datetime.fromisoformat(vod['created_at'].replace("Z", "+00:00"))
+        vod['published_at'] = datetime.datetime.fromisoformat(vod['published_at'].replace("Z", "+00:00"))
+
     return vods_data
+
+def whichVideoContainsTimestamp(vod_list:list, startTimestamp:datetime.datetime, endTimestamp:datetime.datetime):
+    """
+    Sorts through a list of Twitch VODs and returns which VOD contains both the start and end timestamps
+
+    Args:
+        vod_list (list): list of VOD data (dict) information from Twitch API
+            - vod['created_at'] (datetime): timestamp that VOD was created at
+            - vod['duration'] (int): duration of VOD in seconds
+        startTimestamp (datetime): start timestamp of interest
+        endTimestamp (datetime): end timestamp of interest
+    
+    Returns:
+        vod (dict): 
+
+    """
+    # review VODs from oldest to newest
+    for vod in reversed(vod_list):
+        # check for timestamps in the vod (bool)
+        startInVideo = (startTimestamp - vod['created_at']).total_seconds() < vod['duration']
+        endInVideo = (endTimestamp - vod['created_at']).total_seconds() < vod['duration']
+
+        if startInVideo and endInVideo:
+            # video is in the same VOD
+            return vod
+        elif startInVideo ^ endInVideo:
+            # video is in different VODs (XOR)
+            raise Exception("The match is split across multiple Twitch VODs")
+        
+    # video not found
+    raise Exception("There is no Twitch VOD for the provided timestamps")
 
 def downloadTwitchClip_streamlink(vod_id: int, startTimestamp: str, durationSeconds: str, outputFileName: str):
     """

@@ -1,27 +1,36 @@
 import subprocess
 import numpy as np
+from datetime import timedelta
 from scipy.io import wavfile
 from scipy.signal import correlate
 
-def extract_audio_from_mp4(mp4_path: str, target_sr: int = 11025):
+def extract_audio_from_mp4(mp4_path: str, video_crop_start_sec: float = 0, video_crop_end_sec=None, target_sr: int = 11025):
     """Extract mono WAV audio from an MP4 file using ffmpeg.
 
     Args:
-        mp4_path: Path to the input MP4 video file.
-        wav_path: Path where the extracted WAV audio will be written.
+        mp4_path (str): Path to the input MP4 video file.
+        video_crop_start_sec (float): seconds into video to start crop
+        video_crop_end_sec (float or None): seconds into video to end crop
         target_sr: Desired sample rate for the output WAV file.
     """
     wav_path = mp4_path.replace(".mp4", ".wav")
 
     cmd = [
-        "ffmpeg", 
+        "ffmpeg",
         "-y",
         "-i", mp4_path,
         "-ac", "1",
         "-ar", str(target_sr),
-        "-vn", "-copyts",
-        wav_path,
-    ]
+        "-vn", "-copyts"]
+
+    if (video_crop_start_sec != 0) and (video_crop_end_sec != None):
+        video_crop_start_str = str(timedelta(seconds=video_crop_start_sec))
+        video_duration_str = str(timedelta(seconds=video_crop_end_sec-video_crop_start_sec))
+
+        cmd.extend(['-ss', video_crop_start_str, '-t', video_duration_str])
+    
+    cmd.append(wav_path)
+
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
 
 def find_sound_timestamp(ref_wav, video_wav, video_crop_start_sec=0, video_crop_end_sec=None):

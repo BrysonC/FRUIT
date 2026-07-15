@@ -2,6 +2,7 @@ import json         # response handling
 import requests     # API data request
 import base64       # API hashing
 import datetime     # str conversion
+import pytz     # apply timezone
 
 translateSymbol = {'Q': 'Quals', 'P': 'Playoffs', 'F': 'Finals'}
 
@@ -82,17 +83,19 @@ def getMatchesFromFMS(year:int, eventCode:str, program:str, authUsr:str=CREDENTI
     
     return matchesRaw
 
-def rewrapMatches(matchesRaw:list, program:str):
+def rewrapMatches(matchesRaw:list, program:str, timezone_str:str):
     """Reformats FMS matches response into a list of match dictionaries
 
     Args:
         matchesRaw (list): are the matches qualifications?
         program (str): FIRST program; 'FRC' or 'FTC'
+        timezone (str): timezone of the event
 
     Returns:
         matchesSorted (list): [{'X0': {start': datetime.datetime, 'post': datetime.datetime, 'teamsRed': list(int), 'teamsBlue': list(int)]}, ...]
     
     """
+    timezone = pytz.timezone(timezone_str)
 
     # reorganize them for future work
     matchesCleaned = []
@@ -112,8 +115,8 @@ def rewrapMatches(matchesRaw:list, program:str):
                 else:
                     matchDict['id'] = match['tournamentLevel'][0]+str(match['matchNumber'])
             # match information
-            matchDict['start'] = str2dte(match['actualStartTime'])
-            matchDict['post'] = str2dte(match['postResultTime'])
+            matchDict['start'] = timezone.localize(str2dte(match['actualStartTime']))
+            matchDict['post'] = timezone.localize(str2dte(match['postResultTime']))
             matchDict['teamsRed'] = [team['teamNumber'] for team in match['teams'] if team['station'][0]=='R']
             matchDict['teamsBlue'] = [team['teamNumber'] for team in match['teams'] if team['station'][0]=='B']
             # replay tag bool
