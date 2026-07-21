@@ -31,7 +31,6 @@ from TOOLS.CredentialsPopUp import CredDialog
 
 # processes to run on queued threads
 import threading
-from TOOLS.process_queue import watch
 from TOOLS.process_queue import process_queue_seek
 from TOOLS.process_queue import process_queue_build_live
 from TOOLS.process_queue import process_queue_build_static
@@ -403,15 +402,15 @@ class MainWindow(QWidget):
 
         # Create threads for each queue
         self.thread_seek = threading.Thread(target=process_queue_seek, args=(self.CONFIG, self.stop_event, self.status_seen, CREDENTIALS))
-        if self.CONFIG['video']['type'] in ['twitch', 'youtube_live']:
-            self.thread_build = threading.Thread(target=process_queue_build_live, args=(self.CONFIG, self.stop_event, self.status_built))
+        if self.CONFIG['video']['type'] == 'twitch':
+            self.thread_build = threading.Thread(target=process_queue_build_live, args=(self.CONFIG, self.stop_event, self.status_built, CREDENTIALS))
+        elif self.CONFIG['video']['type'] == 'youtube_live':
+            raise NotImplementedError("TODO: finish YouTube Livestream pipeline")
         elif self.CONFIG['video']['type'] in ['static', 'youtube_video']:
             self.thread_build = threading.Thread(target=process_queue_build_static, args=(self.CONFIG, self.stop_event, self.status_built, self.matches))
         self.thread_send = threading.Thread(target=process_queue_send, args=(self.CONFIG, self.stop_event, self.status_sent, self.YouTube))
 
         # Start the threads
-        if self.CONFIG['video']['type'] == 'twitch':
-            watch(self.CONFIG['video']['twitchUserID'], self.stop_event, CREDENTIALS)
         self.thread_seek.start()
         self.thread_build.start()
         self.thread_send.start()

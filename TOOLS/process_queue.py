@@ -42,41 +42,10 @@ download_buffer = 6
 queue_build = queue.Queue()
 queue_send = queue.Queue()
 
-VODs = {}
-
 def incrementCountText(textObject):
     textLabel = textObject.text()[0:7]
     value = int(textObject.text()[7:])
     textObject.setText(textLabel+str(value+1))
-
-def watch(twitch_user_id:str, stop_event, CREDENTIALS, latestVODs:dict=VODs):
-    """
-    Checks for new VODs on a Twitch channel
-
-    Args:
-        twitch_user_id (str): User ID of a Twitch channel
-        stop_event: (bool) or threading.Event(), used to stop processing
-        latestVODs (dict): details of VODs found
-
-    """
-    if stop_event.is_set():
-        return
-    
-    # get the latest VODs for a user ID (pagination ignored)
-    new_VODs_list = getLatestTwitchVODs(CREDENTIALS['Twitch_clientID'], CREDENTIALS['Twitch_clientSecret'], twitch_user_id)
-
-    # covert latest VODs into a dictionary for easier comparison
-    new_VODs = {vod['id'] : vod for vod in new_VODs_list}
-    
-    newIDs = [vodID for vodID in new_VODs.keys() if not(vodID in VODs.keys())]
-    if newIDs:
-        print('New VODs!', newIDs)
-    
-    # Clear the existing VODs and append all new VODs to the shared list
-    latestVODs.update(new_VODs)
-    
-    # Schedule the function to run again after 15 minutes
-    threading.Timer(15*60, watch, args=(twitch_user_id, stop_event, CREDENTIALS, latestVODs)).start()
 
 def process_queue_seek(user_data, stop_event, QLabelCounter, CREDENTIALS):
     """
@@ -217,12 +186,14 @@ def build_video_ffmpeg(user_data:dict, secStart:float, secPost:float, outputFile
     if os.path.exists(score_file):
         os.remove(score_file)
 
-def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVODs:dict=VODs):
+def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, CREDENTIALS:dict):
     """
     Creates match video using Twitch VOD
 
     Args:
         user_data (dict): user inputs from FRUIT GUI
+            - user_data['video']['type'] (str): type of input video ('twitch', 'static', 'youtube_live', 'youtube_video')
+            - user_data['video']['twitchUserID'] (str): user id for a Twitch channel
             - user_data['video']['streamDelay'] (float): seconds from event to sever
             - user_data['season']['secondsBeforeStart'] (float): seconds to include before match start
             - user_data['season']['secondsOfMatch'] (float): seconds to include of match play
@@ -232,30 +203,28 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, latestVO
             - user_data['video']['adaptiveSyncDelay'] (bool): should audio fingerprinting be used to adjust stream delay
         stop_event: (bool) or threading.Event(), used to stop processing
         QLabelCounter: PYQT QLabel() to update respective counter (by 1) in GUI
-        latestVODs (dict): details of VODs found
-            - match['start'] (datetime): timestamp of match start
-            - match['post'] (datetime): timestamp of scores post
+        CREDENTIALS (dict): Twitch API credentials
+            - match['Twitch_clientID'] (str): Twitch API client id
+            - match['Twitch_clientSecret'] (str): Twitch API client secret
 
     """
     while not stop_event.is_set():
-        # if there are no Twitch stream VODs, wait a minute
-        if not latestVODs:
-            print('no VODs!')
-            time.sleep(60)
-            continue
-
         try:
             # grab a match from the build queue, 30 seconds wait for timeout
             match = queue_build.get(timeout=30)
 
+            # get the latest VODs for a user ID (pagination ignored)
+            latest_VODs = getLatestTwitchVODs(CREDENTIALS['Twitch_clientID'], CREDENTIALS['Twitch_clientSecret'], user_data['video']['twitchUserID'])
+
             # determine which VOD contains the match
-            vod = whichVideoContainsTimestamp(latestVODs.values(), match['start'], match['post'])
+            vod = whichVideoContainsTimestamp(latest_VODs, match['start'], match['post'])
             
             # prepare VOD cut start-point
             streamVideoStartSec = ((match['start'] - vod['created_at']).total_seconds() +user_data['video']['streamDelay'] -user_data['season']['secondsBeforeStart']) #add stream delay (time from event to server) & subtract countdown
 
             if streamVideoStartSec < 0:
                 raise ValueError("Negative start time.")
+                
 
             # how many seconds into the downloaded clip the match starts
             matchStartSec = (streamVideoStartSec - int(streamVideoStartSec)) + user_data['season']['secondsBeforeStart']
