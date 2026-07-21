@@ -4,34 +4,82 @@ from datetime import timedelta
 from scipy.io import wavfile
 from scipy.signal import correlate
 
-def extract_audio_from_mp4(mp4_path: str, video_crop_start_sec: float = 0, video_crop_end_sec=None, target_sr: int = 11025):
-    """Extract mono WAV audio from an MP4 file using ffmpeg.
+SUPPORTED_EXTS = {".mp4", ".mov", ".mkv", ".avi"}
+
+def media_duration(path):
+    """Returns the duration of a media file (video/audio) in seconds
 
     Args:
-        mp4_path (str): Path to the input MP4 video file.
+        path (str): path to file of interest
+
+    Returns:
+        duration (float): duration of media file in seconds
+    
+    """
+    result = subprocess.run(
+        ["ffprobe", "-v", "error",
+         "-show_entries", "format=duration",
+         "-of", "default=noprint_wrappers=1:nokey=1",
+         path],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True
+    )
+
+    duration = float(result.stdout.strip())
+
+    return duration
+
+
+def extract_audio_from_video(video_path: str, video_crop_start_sec: float = 0, video_crop_end_sec=None, target_sr: int = 11025):
+    """Extract mono WAV audio from an video file using ffmpeg.
+
+    Args:
+        mp4_path (str): Path to the input video file.
         video_crop_start_sec (float): seconds into video to start crop
         video_crop_end_sec (float or None): seconds into video to end crop
-        target_sr: Desired sample rate for the output WAV file.
+        target_sr: Desired sample rate for the output WAV file. (11.025 kHz to match start.wav)
     """
-    wav_path = mp4_path.replace(".mp4", ".wav")
+    # Find the last dot in the filename
+    dot_index = video_path.rfind(".")
+    if dot_index == -1:
+        raise ValueError("Input file has no extension.")
+    extension = video_path[dot_index:].lower()
+
+    # Validate extension
+    if extension not in SUPPORTED_EXTS:
+        raise ValueError(f"Unsupported file type: {extension}, supported types are: {', '.join(SUPPORTED_EXTS)}")
+
+    # Build .wav output path
+    wav_path = video_path[:dot_index] + ".wav"
 
     cmd = [
         "ffmpeg",
         "-y",
-        "-i", mp4_path,
+        "-i", video_path,
         "-ac", "1",
         "-ar", str(target_sr),
         "-vn", "-copyts"]
 
-    if (video_crop_start_sec != 0) and (video_crop_end_sec != None):
-        video_crop_start_str = str(timedelta(seconds=video_crop_start_sec))
-        video_duration_str = str(timedelta(seconds=video_crop_end_sec-video_crop_start_sec))
+    if (video_crop_start_sec != 0) or (video_crop_end_sec != None):
+        videoFileDuration = media_duration(video_path)
 
-        cmd.extend(['-ss', video_crop_start_str, '-t', video_duration_str])
+        if (video_crop_start_sec < 0) or (video_crop_end_sec > videoFileDuration):
+            raise ValueError("Crop times must be within the duration of the video file.")
+        
+        if (video_crop_end_sec == None):
+            video_crop_end_sec = videoFileDuration
+
+        video_crop_start_str = str(timedelta(seconds=video_crop_start_sec))
+        crop_duration_str = str(timedelta(seconds=video_crop_end_sec-video_crop_start_sec))
+
+        cmd.extend(['-ss', video_crop_start_str, '-t', crop_duration_str])
     
     cmd.append(wav_path)
 
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+    return wav_path
 
 def find_sound_timestamp(ref_wav, video_wav, video_crop_start_sec=0, video_crop_end_sec=None):
     """Find the timestamp of a reference sound within a video's audio track.

@@ -20,7 +20,7 @@ from TOOLS.Twitch import downloadTwitchClip
 from TOOLS.YouTube import getYoutubeTimestamps
 from TOOLS.YouTube import downloadYouTubeClip
 
-from TOOLS.AudioFingerprint import extract_audio_from_mp4
+from TOOLS.AudioFingerprint import extract_audio_from_video
 from TOOLS.AudioFingerprint import find_sound_timestamp
 
 from TOOLS.FMS import getMatchesFromFMS
@@ -242,8 +242,8 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, CREDENTI
 
             # extract audio from the clip and find the exact timestamp of the match start using audio fingerprinting
             if user_data['video']['adaptiveSyncDelay']:
-                extract_audio_from_mp4("input/temp/twitchClip.mp4")
-                start_sound_sec, start_sound_conf = find_sound_timestamp("start.wav", "input/temp/twitchClip.wav", 0, 20)
+                wav_path = extract_audio_from_video("input/temp/twitchClip.mp4")
+                start_sound_sec, start_sound_conf = find_sound_timestamp("start.wav", wav_path, 0, 20)
 
                 if start_sound_conf > 0.2:
                     # prepare match start and post times
@@ -349,12 +349,11 @@ def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matche
                 # extract audio from the clip and find the exact timestamp of the match start using audio fingerprinting
                 if user_data['video']['adaptiveSyncDelay']:
                     if user_data['video']['type'] == 'youtube_video':
-                        extract_audio_from_mp4(user_data['video']['filePath'])
+                        wav_path = extract_audio_from_video(user_data['video']['filePath'])
                     else:
-                        extract_audio_from_mp4(user_data['video']['filePath'], secStart - download_buffer, secStart + 20)
+                        wav_path = extract_audio_from_video(user_data['video']['filePath'], secStart - download_buffer, secStart + 20)
                     
-                    audio_path = user_data['video']['filePath'].replace(".mp4", ".wav")
-                    start_sound_sec, start_sound_conf = find_sound_timestamp("start.wav", audio_path, 0, 20)
+                    start_sound_sec, start_sound_conf = find_sound_timestamp("start.wav", wav_path, 0, 20)
 
                     if start_sound_conf > 0.2:
                         # calculate error and use it to 
