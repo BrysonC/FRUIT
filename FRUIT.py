@@ -237,9 +237,9 @@ class MainWindow(QWidget):
 
         # Video Input 2: Static Local File
         video_input_File = QFormLayout()
-        self.mp4_VOD = QPushButton("Select File")
-        self.mp4_VOD.clicked.connect(self.getFileVideo)
-        video_input_File.addRow('Video File:', self.mp4_VOD)
+        self.videoFile_button = QPushButton("Select File")
+        self.videoFile_button.clicked.connect(self.getFileVideo)
+        video_input_File.addRow('Video File:', self.videoFile_button)
         # reference match details
         self.matchFormLocal = MatchForm(self.matchModel)
         video_input_File.addRow(self.matchFormLocal)
@@ -459,12 +459,12 @@ class MainWindow(QWidget):
             parent=self,
             caption='Select a file',
             directory=os.getcwd(),
-            filter='Video File (*.mp4)'
+            filter='Video file (*.mp4 *.mkv)'
         )
         
         self.videoFilepath = response[0]
         
-        self.mp4_VOD.setText('📁'+response[0].split('/')[-1])
+        self.videoFile_button.setText('📁'+response[0].split('/')[-1])
     
     def clip_video(self):
         self.clip_button.setText('Downloading...')
@@ -772,7 +772,7 @@ class MainWindow(QWidget):
                 if CONFIG['video']['type'] == 'static':
                     self.videoFilepath = CONFIG['video']['filePath']
                     if CONFIG['video']['filePath'] != None:
-                        self.mp4_VOD.setText('📁'+CONFIG['video']['filePath'].split('/')[-1])
+                        self.videoFile_button.setText('📁'+CONFIG['video']['filePath'].split('/')[-1])
                         self.media_player.setSource(QUrl.fromLocalFile(CONFIG['video']['filePath']))
                     self.matchModel.setMatchType({'Q':"Q = Quals", 'P':"P = Playoffs", 'F':"F = Finals"}[CONFIG['video']['matchID'][0]])
                     self.matchModel.setMatchNumber(CONFIG['video']['matchID'][1:])

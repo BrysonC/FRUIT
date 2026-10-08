@@ -35,7 +35,7 @@ def extract_audio_from_video(video_path: str, video_crop_start_sec: float = 0, v
     """Extract mono WAV audio from an video file using ffmpeg.
 
     Args:
-        mp4_path (str): Path to the input video file.
+        video_path (str): Path to the input video file.
         video_crop_start_sec (float): seconds into video to start crop
         video_crop_end_sec (float or None): seconds into video to end crop
         target_sr: Desired sample rate for the output WAV file. (11.025 kHz to match start.wav)
