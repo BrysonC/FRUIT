@@ -192,7 +192,7 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, CREDENTI
 
     Args:
         user_data (dict): user inputs from FRUIT GUI
-            - user_data['video']['type'] (str): type of input video ('twitch', 'local', 'youtube_live', 'youtube_video')
+            - user_data['video']['type'] (str): type of input video ('twitch', 'local', 'local_live', 'youtube_live', 'youtube_video')
             - user_data['video']['twitchUserID'] (str): user id for a Twitch channel
             - user_data['video']['streamDelay'] (float): seconds from event to sever
             - user_data['season']['secondsBeforeStart'] (float): seconds to include before match start
@@ -221,10 +221,8 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, CREDENTI
             
             # prepare VOD cut start-point
             streamVideoStartSec = ((match['start'] - vod['created_at']).total_seconds() +user_data['video']['streamDelay'] -user_data['season']['secondsBeforeStart']) #add stream delay (time from event to server) & subtract countdown
-
             if streamVideoStartSec < 0:
                 raise ValueError("Negative start time.")
-                
 
             # how many seconds into the downloaded clip the match starts
             matchStartSec = (streamVideoStartSec - int(streamVideoStartSec)) + user_data['season']['secondsBeforeStart']
@@ -262,6 +260,77 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, CREDENTI
             else:
                 # how much to trim from the start of the downloaded clip to get to the video start
                 matchStartSec += download_buffer
+
+            try:
+                # prepare the output filename
+                outputFilename = 'output/'+match2str(match, user_data['event']['code'])+'.mp4'
+                
+                # build the video from the downloaded clip
+                if user_data['buildMethod'] == 'moviepy':
+                    build_video_moviepy(user_data, matchStartSec, postStartSec, outputFilename)
+                elif user_data['buildMethod'] == 'ffmpeg':
+                    build_video_ffmpeg(user_data, matchStartSec, postStartSec, outputFilename)
+                
+                # add the match to the send queue, update count and log
+                queue_send.put(match)
+                incrementCountText(QLabelCounter)
+                print("BUILT: "+match2str(match, user_data['event']['code']))
+
+            except ValueError as errorText:
+                print(f'AAAHHHHHHH {errorText}')
+                queue_build.put(match)
+            
+        except queue.Empty:
+            continue
+        except ValueError:
+            print('negative start time, do not retry match')
+
+def process_queue_build_live_local(user_data:dict, stop_event, QLabelCounter, CREDENTIALS:dict):
+    """
+    Creates match video using local (live) ".mkv" recording
+
+    Args:
+        user_data (dict): user inputs from FRUIT GUI
+            - user_data['video']['type'] (str): type of input video ('twitch', 'local', 'local_live', 'youtube_live', 'youtube_video')
+            - user_data['video']['streamDelay'] (float): seconds from event to sever
+        stop_event: (bool) or threading.Event(), used to stop processing
+        QLabelCounter: PYQT QLabel() to update respective counter (by 1) in GUI
+
+    """
+    # Convert recordingStartTime to datetime object
+    recordingStartTime = datetime.datetime.fromisoformat(user_data['video']['recordingStartTime'])
+
+    while not stop_event.is_set():
+        try:
+            # grab a match from the build queue, 30 seconds wait for timeout
+            match = queue_build.get(timeout=30)
+
+            # how many seconds into the recording the match starts
+            matchStartSec = (match['start'] - recordingStartTime).total_seconds() + user_data['video']['streamDelay']
+
+            # raise an exception if the start time is negative
+            if (matchStartSec - user_data['season']['secondsBeforeStart']) < 0:
+                raise ValueError("Negative start time.")
+
+            # extract audio from the clip and find the exact timestamp of the match start using audio fingerprinting
+            if user_data['video']['adaptiveSyncDelay']:
+                wav_path = extract_audio_from_video(user_data['video']['filePath'], matchStartSec - download_buffer, matchStartSec + 20 + 1)
+                start_sound_sec, start_sound_conf = find_sound_timestamp("start.wav", wav_path, 0, 20)
+
+                if start_sound_conf > 0.2:
+                    # calculate error and update start seconds
+                    delayError = round(start_sound_sec - download_buffer, 5)
+                    matchStartSec = matchStartSec + delayError
+                    
+                    print(f"Stream delay of {user_data['video']['streamDelay']:.4} was adjusted by {delayError/2:.4} seconds due to a confidence of {start_sound_conf:.4}")
+
+                    # update stream delay based on audio timestamp for future matches
+                    user_data['video']['streamDelay'] += (delayError/2)
+                else:
+                    # failed to find good sound match, revert to default
+                    print(f"Stream delay of {user_data['video']['streamDelay']:.4} was NOT adjusted due to a low confidence of {start_sound_conf:.4}")
+
+            postStartSec = (match['post'] - match['start']).total_seconds() + matchStartSec
 
             try:
                 # prepare the output filename

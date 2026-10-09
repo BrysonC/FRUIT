@@ -1,6 +1,7 @@
 # project-specific ignores
 input/*.mp4
 input/*.wav
+input/temp/*
 output/*
 testing/*
 log/*
@@ -10,6 +11,7 @@ trial.png
 client_secret.json
 *.mp4
 *.CONFIG
+*.ipynb
 
 # VS Code settings
 .vs/

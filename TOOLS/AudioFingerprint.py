@@ -26,9 +26,23 @@ def media_duration(path):
         text=True
     )
 
-    duration = float(result.stdout.strip())
+    duration = result.stdout.strip()
 
-    return duration
+    if duration and (duration.upper() != "N/A"):
+        return float(duration)
+
+    # Fallback for active/incomplete recordings
+    result = subprocess.run(
+        ["ffprobe", "-v", "error",
+        "-select_streams", "v:0",
+        "-show_entries", "packet=pts_time",
+        "-of", "csv=p=0",
+        path],
+        capture_output=True,
+        text=True
+    )
+
+    return max([float(x) for x in result.stdout.splitlines() if x.strip()])
 
 
 def extract_audio_from_video(video_path: str, video_crop_start_sec: float = 0, video_crop_end_sec=None, target_sr: int = 11025):

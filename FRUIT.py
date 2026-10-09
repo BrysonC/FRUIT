@@ -33,6 +33,7 @@ from TOOLS.CredentialsPopUp import CredDialog
 import threading
 from TOOLS.process_queue import process_queue_seek
 from TOOLS.process_queue import process_queue_build_live
+from TOOLS.process_queue import process_queue_build_live_local
 from TOOLS.process_queue import process_queue_build_static
 from TOOLS.process_queue import process_queue_send
 from TOOLS.ffmpegrecord import start_recording
@@ -65,7 +66,7 @@ class MainWindow(QWidget):
         '''
         self.setWindowTitle('FRUIT by Bryce Castle')
         self.setWindowIcon(QIcon('./images/icon_FRUIT.ico'))
-        self.setGeometry(250, 250, 800, 400)
+        self.setGeometry(200, 200, 800, 400)
         main_layout = QGridLayout(self)
         self.setLayout(main_layout)
         self.tab = QTabWidget(self)
@@ -216,6 +217,7 @@ class MainWindow(QWidget):
         page_map = {
             ("Live", "Twitch"): 1,
             ("Live", "YouTube (experimental)"): 3,
+            ("Live", "Local File"): 5,
             ("Static", "Twitch"): 1,
             ("Static", "YouTube (experimental)"): 4,
             ("Static", "Local File"): 2}
@@ -256,7 +258,7 @@ class MainWindow(QWidget):
         # Video Input 2: Static Local File
         video_input_File = QFormLayout()
         self.videoFile_button = QPushButton("Select File")
-        self.videoFile_button.clicked.connect(self.getFileVideo)
+        self.videoFile_button.clicked.connect(lambda: self.getFileVideo(['mp4', 'mkv'], self.videoFile_button))
         video_input_File.addRow('Video File:', self.videoFile_button)
         # reference match details
         self.matchFormLocal = MatchForm(self.matchModel)
@@ -319,6 +321,15 @@ class MainWindow(QWidget):
         self.audio_clip_output = QAudioOutput()
         self.media_clip_player.setAudioOutput(self.audio_clip_output)
         self.media_clip_player.setVideoOutput(self.video_clip_widget)
+
+        # Video Input 5: Live Local File
+        mkv_input_File = QFormLayout()
+        self.mkvFile_button = QPushButton("Select File")
+        self.mkvFile_button.clicked.connect(lambda: self.getFileVideo(['mkv'], self.mkvFile_button, True))
+        mkv_input_File.addRow(self.mkvFile_button)
+        mkv_file_widget = QWidget()
+        mkv_file_widget.setLayout(mkv_input_File)
+        self.stacked_widget.addWidget(mkv_file_widget)
 
         '''
         TBA PAGE
@@ -422,6 +433,8 @@ class MainWindow(QWidget):
         self.thread_seek = threading.Thread(target=process_queue_seek, args=(self.CONFIG, self.stop_event, self.status_seen, CREDENTIALS))
         if self.CONFIG['video']['type'] == 'twitch':
             self.thread_build = threading.Thread(target=process_queue_build_live, args=(self.CONFIG, self.stop_event, self.status_built, CREDENTIALS))
+        elif self.CONFIG['video']['type'] == 'local_live':
+            self.thread_build = threading.Thread(target=process_queue_build_live_local, args=(self.CONFIG, self.stop_event, self.status_built, CREDENTIALS))
         elif self.CONFIG['video']['type'] == 'youtube_live':
             raise NotImplementedError("TODO: finish YouTube Livestream pipeline")
         elif self.CONFIG['video']['type'] in ['local', 'youtube_video']:
@@ -472,17 +485,22 @@ class MainWindow(QWidget):
         self.tab.tabBar().setTabTextColor(5, QColor('green'))
         self.play_button.setStyleSheet('color: green')
     
-    def getFileVideo(self):
+    def getFileVideo(self, types, buttonBind, changeTabColor=False):
+        if not(types):
+            raise ValueError("types list cannot be empty")
         response = QFileDialog.getOpenFileName(
             parent=self,
             caption='Select a file',
             directory=os.getcwd(),
-            filter='Video file (*.mp4 *.mkv)'
+            filter=f'Video file (*.{" *.".join(types)})'
         )
         
         self.videoFilepath = response[0]
         
-        self.videoFile_button.setText('📁'+response[0].split('/')[-1])
+        buttonBind.setText('📁'+response[0].split('/')[-1])
+
+        if changeTabColor:
+            self.tab.tabBar().setTabTextColor(5, QColor('green'))
     
     def clip_video(self):
         self.clip_button.setText('Downloading...')
@@ -722,11 +740,16 @@ class MainWindow(QWidget):
                                        'URL' : self.youtubeURL.text(),
                                        'matchID' : self.matchModel.matchType() + str(self.matchModel.matchNumber()),
                                        'matchTime' : (self.match_timeMin, self.match_timeSec)}
-            elif self.dropdownInput.currentText() == "Local File":
+            elif (self.dropdownDataFrequency.currentText() == 'Static') and (self.dropdownInput.currentText() == "Local File"):
                 CONFIG['video'] = {'type': 'local',
                                    'filePath' : self.videoFilepath,
                                    'matchID' : self.matchModel.matchType() + str(self.matchModel.matchNumber()),
                                    'matchTime' : tuple(map(float, self.matchModel.timestamp().split(':')))}
+            elif (self.dropdownDataFrequency.currentText() == 'Live') and (self.dropdownInput.currentText() == "Local File"):
+                CONFIG['video'] = {'type': 'local_live',
+                                   'filePath' : self.videoFilepath,
+                                   'streamDelay' : 0.868,
+                                   'recordingStartTime': str(datetime.datetime.fromtimestamp(os.path.getctime(self.videoFilepath)).astimezone())}
             
             CONFIG['video']['adaptiveSyncDelay'] = bool(self.adaptiveSyncCheckbox.isChecked())
             
@@ -800,6 +823,12 @@ class MainWindow(QWidget):
                     self.matchModel.setMatchNumber(CONFIG['video']['matchID'][1:])
                     self.matchModel.setTimestamp(f'{int(CONFIG["video"]["matchTime"][0])}:{CONFIG["video"]["matchTime"][1]}')
                     self.dropdownInput.setCurrentText("Local File")
+                elif CONFIG['video']['type'] == 'local_live':
+                    self.videoFilepath = CONFIG['video']['filePath']
+                    if CONFIG['video']['filePath'] != None:
+                        self.mkvFile_button.setText('📁'+CONFIG['video']['filePath'].split('/')[-1])
+                    self.dropdownInput.setCurrentText("Local File")
+                    self.tab.tabBar().setTabTextColor(5, QColor('green'))
                 elif CONFIG['video']['type'] == 'twitch':
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
                     self.twitchUser.setText(CONFIG['video']['twitchUsername'])
