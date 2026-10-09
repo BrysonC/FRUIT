@@ -192,7 +192,7 @@ def process_queue_build_live(user_data:dict, stop_event, QLabelCounter, CREDENTI
 
     Args:
         user_data (dict): user inputs from FRUIT GUI
-            - user_data['video']['type'] (str): type of input video ('twitch', 'static', 'youtube_live', 'youtube_video')
+            - user_data['video']['type'] (str): type of input video ('twitch', 'local', 'youtube_live', 'youtube_video')
             - user_data['video']['twitchUserID'] (str): user id for a Twitch channel
             - user_data['video']['streamDelay'] (float): seconds from event to sever
             - user_data['season']['secondsBeforeStart'] (float): seconds to include before match start
@@ -293,7 +293,7 @@ def process_queue_build_static(user_data:dict, stop_event, QLabelCounter, matche
 
     Args:
         user_data (dict): user inputs from FRUIT GUI
-            - user_data['video']['type'] (str): type of input video ('twitch', 'static', 'youtube_live', 'youtube_video')
+            - user_data['video']['type'] (str): type of input video ('twitch', 'local', 'youtube_live', 'youtube_video')
             - user_data['video']['streamDelay'] (float): seconds from event to sever
             - user_data['season']['secondsBeforeStart'] (float): seconds to include before match start
             - user_data['season']['secondsOfMatch'] (float): seconds to include of match play

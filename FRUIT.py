@@ -204,22 +204,40 @@ class MainWindow(QWidget):
          - watch 4 seconds of clip
         '''
         page_video = QWidget(self)
-        layout = QVBoxLayout()
+        layout = QFormLayout()
         page_video.setLayout(layout)
 
         # Dropdown to switch views
+        self.dropdownDataFrequency = QComboBox()
         self.dropdownInput = QComboBox()
         self.dropdownBuildMethod = QComboBox()
         self.stacked_widget = QStackedWidget()
-        self.dropdownInput.addItems(["Twitch", "Local - Static File", "YouTube - Livestream (experimental)", "YouTube - Video (experimental)"])
+        self.dropdownDataFrequency.addItems(["Live", "Static"])
+        page_map = {
+            ("Live", "Twitch"): 1,
+            ("Live", "YouTube (experimental)"): 3,
+            ("Static", "Twitch"): 1,
+            ("Static", "YouTube (experimental)"): 4,
+            ("Static", "Local File"): 2}
+        frequencySourceOptions = {freq: [k2 for k1, k2 in page_map if k1 == freq] for freq in {freq for freq, _ in page_map}}
+        def update_page():
+            page = page_map.get((self.dropdownDataFrequency.currentText(), self.dropdownInput.currentText()))
+            self.stacked_widget.setCurrentIndex(page-1) if page else None
+        def update_dropdown():
+            self.dropdownInput.clear()
+            self.dropdownInput.addItems(frequencySourceOptions.get(self.dropdownDataFrequency.currentText(), []))
+            update_page()
+        update_dropdown()
+        self.dropdownDataFrequency.currentTextChanged.connect(update_dropdown)
+        self.dropdownInput.currentTextChanged.connect(update_page)
         self.dropdownBuildMethod.addItems(["ffmpeg", "moviepy"])
-        self.dropdownInput.currentIndexChanged.connect(lambda index: self.stacked_widget.setCurrentIndex(index))
         self.adaptiveSyncCheckbox = QCheckBox('Adaptive audio timestamp sync')
         self.adaptiveSyncCheckbox.setChecked(True)
-        layout.addWidget(self.dropdownInput)
-        layout.addWidget(self.dropdownBuildMethod)
-        layout.addWidget(self.adaptiveSyncCheckbox)
-        layout.addWidget(self.stacked_widget)
+        layout.addRow('Data Frequency :', self.dropdownDataFrequency)
+        layout.addRow('Video Source :', self.dropdownInput)
+        layout.addRow('Build Method :', self.dropdownBuildMethod)
+        layout.addRow(self.adaptiveSyncCheckbox)
+        layout.addRow(self.stacked_widget)
 
         # Video Input 1: Twitch Livestream
         video_input_Twitch = QFormLayout()
@@ -283,7 +301,7 @@ class MainWindow(QWidget):
 
         # Video Input 4: YouTube Video (Recording)
         video_input_YouTube_static = QFormLayout()
-        video_input_YouTube_static.addRow(QLabel("⚠️ WARNING: this method's resolution is limited to 360p"))
+        video_input_YouTube_static.addRow(QLabel("⚠️ WARNING: this method's resolution may be limited to 360p"))
         self.youtubeURL = QLineEdit("https://www.youtube.com/watch?v="); video_input_YouTube_static.addRow("YouTube URL:", self.youtubeURL)
         self.matchFormYouTube = MatchForm(self.matchModel)
         video_input_YouTube_static.addRow(self.matchFormYouTube)
@@ -406,7 +424,7 @@ class MainWindow(QWidget):
             self.thread_build = threading.Thread(target=process_queue_build_live, args=(self.CONFIG, self.stop_event, self.status_built, CREDENTIALS))
         elif self.CONFIG['video']['type'] == 'youtube_live':
             raise NotImplementedError("TODO: finish YouTube Livestream pipeline")
-        elif self.CONFIG['video']['type'] in ['static', 'youtube_video']:
+        elif self.CONFIG['video']['type'] in ['local', 'youtube_video']:
             self.thread_build = threading.Thread(target=process_queue_build_static, args=(self.CONFIG, self.stop_event, self.status_built, self.matches))
         self.thread_send = threading.Thread(target=process_queue_send, args=(self.CONFIG, self.stop_event, self.status_sent, self.YouTube))
 
@@ -471,8 +489,8 @@ class MainWindow(QWidget):
         self.clip_button.setStyleSheet('color: teal'); self.clip_button.repaint();
         timestamp = self.matchModel.timestamp()
         self.match_timeMin, self.match_timeSec = map(float, timestamp.split(':'))
-        timestamp_start = str(int(self.match_timeMin))+":"+str(int(self.match_timeSec))
-        timestamp_end = str(int(self.match_timeMin))+":"+str(int(self.match_timeSec)+5) # 5 seconds of clip
+        timestamp_start = str(datetime.timedelta(minutes=int(self.match_timeMin), seconds=int(self.match_timeSec)))
+        timestamp_end = str(datetime.timedelta(minutes=int(self.match_timeMin), seconds=int(self.match_timeSec)+5)) # 5 seconds of clip
         downloadYouTubeClip(self.youtubeURL.text(), timestamp_start, timestamp_end, 'input/temp/clip.mp4')
         self.clip_button.setText('Clip 4 Seconds')
         self.clip_button.setStyleSheet('color: green'); self.clip_button.repaint();
@@ -683,6 +701,8 @@ class MainWindow(QWidget):
 
             CONFIG['buildMethod'] = self.dropdownBuildMethod.currentText()
 
+            CONFIG['dataFrequency'] = self.dropdownDataFrequency.currentText()
+
             if 'twitch' in self.dropdownInput.currentText().lower():
                 CONFIG['video'] = {'type': 'twitch',
                                    'twitchUsername' : self.twitchUser.text(),
@@ -690,20 +710,20 @@ class MainWindow(QWidget):
                                    'streamDelay' : float(self.streamDelay.text()),
                                    'filePath' : 'input/temp/twitchClip.mp4'}
             elif 'youtube' in self.dropdownInput.currentText().lower():
-                if 'livestream' in self.dropdownInput.currentText().lower():
+                if self.dropdownDataFrequency.currentText() == 'Live':
                     CONFIG['video'] = {'type': 'youtube_live',
                                        'youtubeUsername' : self.youtubeUser.text(),
                                        'youtubeUserID' : self.youtubeUserID, 
                                        'streamDelay' : float(self.streamDelay.text()),
                                        'filePath' : 'input/temp/youtubeClip.mp4',
                                        'recordingStartTime': 'TODO: add start time feature'}
-                elif 'video' in self.dropdownInput.currentText().lower():
+                elif self.dropdownDataFrequency.currentText() == 'Static':
                     CONFIG['video'] = {'type': 'youtube_video',
                                        'URL' : self.youtubeURL.text(),
                                        'matchID' : self.matchModel.matchType() + str(self.matchModel.matchNumber()),
                                        'matchTime' : (self.match_timeMin, self.match_timeSec)}
-            elif 'static' in self.dropdownInput.currentText().lower():
-                CONFIG['video'] = {'type': 'static',
+            elif self.dropdownInput.currentText() == "Local File":
+                CONFIG['video'] = {'type': 'local',
                                    'filePath' : self.videoFilepath,
                                    'matchID' : self.matchModel.matchType() + str(self.matchModel.matchNumber()),
                                    'matchTime' : tuple(map(float, self.matchModel.timestamp().split(':')))}
@@ -719,9 +739,10 @@ class MainWindow(QWidget):
             button.setStyleSheet('color: green')
             button.setText('Bake CONFIG: SUCCESS!')
         
-        except AttributeError:
+        except AttributeError as errorMessage:
             button.setStyleSheet('color: red')
             button.setText('Bake CONFIG: ERROR')
+            print(errorMessage)
     
     def loadCONFIG(self, button):
         response = QFileDialog.getOpenFileName(
@@ -767,9 +788,10 @@ class MainWindow(QWidget):
                 self.TBA_eventCode.setText(CONFIG['TBA']['eventKey'])
 
                 self.dropdownBuildMethod.setCurrentText(CONFIG['buildMethod'])
+                self.dropdownDataFrequency.setCurrentText(CONFIG['dataFrequency'])
                 self.adaptiveSyncCheckbox.setChecked(CONFIG['video']['adaptiveSyncDelay'])
                 
-                if CONFIG['video']['type'] == 'static':
+                if CONFIG['video']['type'] == 'local':
                     self.videoFilepath = CONFIG['video']['filePath']
                     if CONFIG['video']['filePath'] != None:
                         self.videoFile_button.setText('📁'+CONFIG['video']['filePath'].split('/')[-1])
@@ -777,7 +799,7 @@ class MainWindow(QWidget):
                     self.matchModel.setMatchType({'Q':"Q = Quals", 'P':"P = Playoffs", 'F':"F = Finals"}[CONFIG['video']['matchID'][0]])
                     self.matchModel.setMatchNumber(CONFIG['video']['matchID'][1:])
                     self.matchModel.setTimestamp(f'{int(CONFIG["video"]["matchTime"][0])}:{CONFIG["video"]["matchTime"][1]}')
-                    self.dropdownInput.setCurrentText("Local - Static File")
+                    self.dropdownInput.setCurrentText("Local File")
                 elif CONFIG['video']['type'] == 'twitch':
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
                     self.twitchUser.setText(CONFIG['video']['twitchUsername'])
@@ -788,13 +810,13 @@ class MainWindow(QWidget):
                     self.streamDelay.setText(str(CONFIG['video']['streamDelay']))
                     self.youtubeUser.setText(CONFIG['video']['youtubeUsername'])
                     self.youtubeUserID = CONFIG['video']['youtubeUserID']
-                    self.dropdownInput.setCurrentText("YouTube - Livestream (experimental)")
+                    self.dropdownInput.setCurrentText("YouTube (experimental)")
                 elif CONFIG['video']['type'] == 'youtube_video':
                     self.youtubeURL.setText(CONFIG['video']['URL'])
                     self.matchModel.setMatchType({'Q':"Q = Quals", 'P':"P = Playoffs", 'F':"F = Finals"}[CONFIG['video']['matchID'][0]])
                     self.matchModel.setMatchNumber(CONFIG['video']['matchID'][1:])
                     self.matchModel.setTimestamp(f'{int(CONFIG["video"]["matchTime"][0])}:{CONFIG["video"]["matchTime"][1]}')
-                    self.dropdownInput.setCurrentText("YouTube - Video (experimental)")
+                    self.dropdownInput.setCurrentText("YouTube (experimental)")
         else:
             print('No CONFIG selected!')
 
